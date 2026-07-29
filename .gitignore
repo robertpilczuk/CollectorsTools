@@ -1,0 +1,38 @@
+# === Build ===
+target/
+dist/
+
+# === Baza danych (dane lokalne uzytkownika, nie naleza do repozytorium) ===
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+collectorstools_backup_*.db
+
+# === Logi ===
+logs/
+*.log
+
+# === IDE ===
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# === System ===
+.DS_Store
+Thumbs.db
+
+# === Notatki lokalne (workflow, backlog) ===
+CLAUDE.local.md
+
+# === Paczki dystrybucyjne (jpackage/jlink) ===
+*.dmg
+*.pkg
+*.msi
+*.deb
+*.app/
