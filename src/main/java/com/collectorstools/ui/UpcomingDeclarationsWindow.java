@@ -100,7 +100,7 @@ public class UpcomingDeclarationsWindow extends Stage {
 
     private void loadRows() {
         rows.clear();
-        for (Declaration d : declarationService.findByStatus(DeclarationStatus.OCZEKUJACA)) {
+        for (Declaration d : declarationService.findByStatus(DeclarationStatus.PENDING)) {
             Debtor debtor = debtorService.findById(d.getDebtorId()).orElse(null);
             String debtorName = debtor != null ? debtor.getFullName() : "Nieznany dłużnik";
             String caseNumber = d.getDebtId() != null

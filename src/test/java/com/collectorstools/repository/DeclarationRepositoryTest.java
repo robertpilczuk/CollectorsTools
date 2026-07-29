@@ -45,37 +45,37 @@ class DeclarationRepositoryTest {
 
     @Test
     void saveAndFindById() throws Exception {
-        Declaration saved = repository.save(decl(LocalDate.now(), "100", DeclarationStatus.OCZEKUJACA));
+        Declaration saved = repository.save(decl(LocalDate.now(), "100", DeclarationStatus.PENDING));
         assertNotNull(saved.getId());
-        assertEquals(DeclarationStatus.OCZEKUJACA, repository.findById(saved.getId()).orElseThrow().getStatus());
+        assertEquals(DeclarationStatus.PENDING, repository.findById(saved.getId()).orElseThrow().getStatus());
     }
 
     @Test
     void refreshOverdueMarksPastPendingAsBroken() throws Exception {
-        repository.save(decl(LocalDate.now().minusDays(5), "100", DeclarationStatus.OCZEKUJACA));
-        repository.save(decl(LocalDate.now().plusDays(5), "100", DeclarationStatus.OCZEKUJACA));
+        repository.save(decl(LocalDate.now().minusDays(5), "100", DeclarationStatus.PENDING));
+        repository.save(decl(LocalDate.now().plusDays(5), "100", DeclarationStatus.PENDING));
 
         repository.refreshOverdue();
 
-        assertEquals(1, repository.countByStatus(DeclarationStatus.ZLAMANA));
-        assertEquals(1, repository.countByStatus(DeclarationStatus.OCZEKUJACA));
+        assertEquals(1, repository.countByStatus(DeclarationStatus.BROKEN));
+        assertEquals(1, repository.countByStatus(DeclarationStatus.PENDING));
     }
 
     @Test
     void findByStatusReturnsOnlyMatchingOrderedByDate() throws Exception {
-        repository.save(decl(LocalDate.now().plusDays(10), "100", DeclarationStatus.OCZEKUJACA));
-        repository.save(decl(LocalDate.now().plusDays(2), "100", DeclarationStatus.OCZEKUJACA));
-        repository.save(decl(LocalDate.now(), "100", DeclarationStatus.DOTRZYMANA));
+        repository.save(decl(LocalDate.now().plusDays(10), "100", DeclarationStatus.PENDING));
+        repository.save(decl(LocalDate.now().plusDays(2), "100", DeclarationStatus.PENDING));
+        repository.save(decl(LocalDate.now(), "100", DeclarationStatus.FULFILLED));
 
-        List<Declaration> pending = repository.findByStatus(DeclarationStatus.OCZEKUJACA);
+        List<Declaration> pending = repository.findByStatus(DeclarationStatus.PENDING);
         assertEquals(2, pending.size());
         assertTrue(pending.get(0).getPromisedDate().isBefore(pending.get(1).getPromisedDate()));
     }
 
     @Test
     void findByDateRangeFiltersInclusive() throws Exception {
-        repository.save(decl(LocalDate.now().plusDays(3), "100", DeclarationStatus.OCZEKUJACA));
-        repository.save(decl(LocalDate.now().plusDays(30), "100", DeclarationStatus.OCZEKUJACA));
+        repository.save(decl(LocalDate.now().plusDays(3), "100", DeclarationStatus.PENDING));
+        repository.save(decl(LocalDate.now().plusDays(30), "100", DeclarationStatus.PENDING));
 
         List<Declaration> within = repository.findByDateRange(LocalDate.now(), LocalDate.now().plusDays(7));
         assertEquals(1, within.size());
@@ -83,13 +83,13 @@ class DeclarationRepositoryTest {
 
     @Test
     void updatePreservesDebtId() throws Exception {
-        Declaration saved = repository.save(decl(LocalDate.now(), "100", DeclarationStatus.OCZEKUJACA));
-        saved.setStatus(DeclarationStatus.DOTRZYMANA);
+        Declaration saved = repository.save(decl(LocalDate.now(), "100", DeclarationStatus.PENDING));
+        saved.setStatus(DeclarationStatus.FULFILLED);
         saved.setPaymentDate(LocalDate.now());
         repository.update(saved);
 
         Declaration found = repository.findById(saved.getId()).orElseThrow();
-        assertEquals(DeclarationStatus.DOTRZYMANA, found.getStatus());
+        assertEquals(DeclarationStatus.FULFILLED, found.getStatus());
         assertNull(found.getDebtId());
     }
 }

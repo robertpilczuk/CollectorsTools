@@ -39,7 +39,8 @@ public class SchemaManager {
      * Kolejność ma znaczenie: pozycja i-ta odpowiada wersji schematu i+1.
      */
     private static final String[] MIGRATIONS = {
-            "V1__baseline.sql"
+            "V1__baseline.sql",
+            "V2__declaration_statuses.sql"
     };
 
     private final Connection conn;

@@ -24,9 +24,13 @@ public class DeclarationRepository {
 
     public Declaration save(Declaration declaration) throws SQLException {
         String sql = """
-            INSERT INTO declarations (debtor_id, debt_id, promised_date, promised_amount, status, broken_reason, payment_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO declarations (debtor_id, debt_id, promised_date, promised_amount, status,
+                                      broken_reason, cancelled_reason, payment_date, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
+        if (declaration.getCreatedAt() == null) {
+            declaration.setCreatedAt(LocalDate.now());
+        }
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, declaration.getDebtorId());
             setNullableLong(ps, 2, declaration.getDebtId());
@@ -34,7 +38,9 @@ public class DeclarationRepository {
             ps.setBigDecimal(4, declaration.getPromisedAmount());
             ps.setString(5, declaration.getStatus().name());
             ps.setString(6, declaration.getBrokenReason());
-            ps.setString(7, declaration.getPaymentDate() != null ? declaration.getPaymentDate().toString() : null);
+            ps.setString(7, declaration.getCancelledReason());
+            ps.setString(8, declaration.getPaymentDate() != null ? declaration.getPaymentDate().toString() : null);
+            ps.setString(9, declaration.getCreatedAt().toString());
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) declaration.setId(keys.getLong(1));
@@ -46,11 +52,15 @@ public class DeclarationRepository {
     /**
      * Update aktualizuje TYLKO pola statusu i dat — nie rusza debt_id
      * żeby nie naruszać foreign key constraint.
+     *
+     * <p>Nie zmienia też created_at: data rejestracji deklaracji jest faktem
+     * historycznym i nie podlega edycji.
      */
     public void update(Declaration declaration) throws SQLException {
         String sql = """
             UPDATE declarations
-            SET promised_date=?, promised_amount=?, status=?, broken_reason=?, payment_date=?
+            SET promised_date=?, promised_amount=?, status=?, broken_reason=?,
+                cancelled_reason=?, payment_date=?
             WHERE id=?
         """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -58,8 +68,9 @@ public class DeclarationRepository {
             ps.setBigDecimal(2, declaration.getPromisedAmount());
             ps.setString(3, declaration.getStatus().name());
             ps.setString(4, declaration.getBrokenReason());
-            ps.setString(5, declaration.getPaymentDate() != null ? declaration.getPaymentDate().toString() : null);
-            ps.setLong(6, declaration.getId());
+            ps.setString(5, declaration.getCancelledReason());
+            ps.setString(6, declaration.getPaymentDate() != null ? declaration.getPaymentDate().toString() : null);
+            ps.setLong(7, declaration.getId());
             ps.executeUpdate();
         }
     }
@@ -107,18 +118,24 @@ public class DeclarationRepository {
     }
 
     /**
-     * Automatycznie oznacza jako ZLAMANA wszystkie przeterminowane deklaracje OCZEKUJACE.
-     * Wywoływać przy starcie aplikacji.
+     * Oznacza jako BROKEN przeterminowane deklaracje oczekujące. Wywoływać przy starcie aplikacji.
+     *
+     * <p>Warunek {@code promised_date < date('now')} jest ostry — deklaracja z terminem
+     * na dziś pozostaje oczekująca przez cały dzień terminu.
+     *
+     * <p>Zmiana obejmuje wyłącznie status PENDING. Deklaracje częściowo opłacone
+     * nie są łamane automatycznie: dłużnik już zapłacił część, więc o niedotrzymaniu
+     * decyduje windykator. Anulowanych i rozliczonych operacja nie dotyka.
      */
     public void refreshOverdue() throws SQLException {
         String sql = """
-            UPDATE declarations SET status='ZLAMANA'
-            WHERE status='OCZEKUJACA' AND promised_date < date('now')
+            UPDATE declarations SET status='BROKEN'
+            WHERE status='PENDING' AND promised_date < date('now')
         """;
         try (Statement st = conn.createStatement()) {
             int updated = st.executeUpdate(sql);
             if (updated > 0) {
-                System.out.println("Oznaczono " + updated + " przeterminowanych deklaracji jako ZLAMANA.");
+                System.out.println("Oznaczono " + updated + " przeterminowanych deklaracji jako złamane.");
             }
         }
     }
@@ -147,6 +164,7 @@ public class DeclarationRepository {
     private Declaration map(ResultSet rs) throws SQLException {
         String promisedDateStr = rs.getString("promised_date");
         String paymentDateStr  = rs.getString("payment_date");
+        String createdAtStr    = rs.getString("created_at");
         long debtId = rs.getLong("debt_id");
         boolean debtIdNull = rs.wasNull();
 
@@ -154,10 +172,12 @@ public class DeclarationRepository {
                 .id(rs.getLong("id"))
                 .debtorId(rs.getLong("debtor_id"))
                 .debtId(debtIdNull ? null : debtId)
+                .createdAt(createdAtStr != null ? LocalDate.parse(createdAtStr) : null)
                 .promisedDate(promisedDateStr != null ? LocalDate.parse(promisedDateStr) : null)
                 .promisedAmount(rs.getBigDecimal("promised_amount"))
                 .status(DeclarationStatus.valueOf(rs.getString("status")))
                 .brokenReason(rs.getString("broken_reason"))
+                .cancelledReason(rs.getString("cancelled_reason"))
                 .paymentDate(paymentDateStr != null ? LocalDate.parse(paymentDateStr) : null)
                 .build();
     }

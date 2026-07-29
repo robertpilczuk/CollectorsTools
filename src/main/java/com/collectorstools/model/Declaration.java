@@ -18,31 +18,39 @@ public class Declaration {
     private Long debtorId;
     private Long debtId;               // Do której sprawy należy (opcjonalnie)
 
+    private LocalDate createdAt;       // Kiedy deklaracja została zarejestrowana
     private LocalDate promisedDate;    // Data obietnicy wpłaty
     private BigDecimal promisedAmount; // Obiecana kwota
-    private DeclarationStatus status;  // OCZEKUJACA / DOTRZYMANA / ZLAMANA
+    private DeclarationStatus status;
 
     private String brokenReason;       // Powód złamania (wypełniany przez windykatora)
-    private LocalDate paymentDate;     // Data faktycznej wpłaty (jeśli dotrzymana)
-
-    /**
-     * Automatycznie ustawia status na ZLAMANA jeśli data minęła
-     * i deklaracja nadal oczekuje na wpłatę.
-     */
-    public void refreshStatus() {
-        if (status == DeclarationStatus.OCZEKUJACA
-                && promisedDate != null
-                && LocalDate.now().isAfter(promisedDate)) {
-            status = DeclarationStatus.ZLAMANA;
-        }
-    }
+    private String cancelledReason;    // Uzasadnienie anulowania — wymagane przy CANCELLED
+    private LocalDate paymentDate;     // Data faktycznej wpłaty
 
     public boolean isBroken() {
-        return status == DeclarationStatus.ZLAMANA;
+        return status == DeclarationStatus.BROKEN;
     }
 
     public boolean isPending() {
-        return status == DeclarationStatus.OCZEKUJACA;
+        return status == DeclarationStatus.PENDING;
+    }
+
+    /**
+     * Czy wpłata wpłynęła po zadeklarowanym terminie. Deklaracja może być
+     * dotrzymana mimo opóźnienia — interfejs oznacza taki przypadek osobno.
+     */
+    public boolean isPaidLate() {
+        return paymentDate != null
+                && promisedDate != null
+                && paymentDate.isAfter(promisedDate);
+    }
+
+    /**
+     * Powód zmiany stanu — złamania albo anulowania, zależnie od statusu.
+     */
+    public String getReason() {
+        if (status == DeclarationStatus.CANCELLED) return cancelledReason;
+        return brokenReason;
     }
 
     @Override

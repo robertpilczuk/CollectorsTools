@@ -79,7 +79,8 @@ public class DeclarationFormDialog extends Dialog<Declaration> {
                     .debtId(selectedDebt != null ? selectedDebt.getId() : null)
                     .promisedDate(datePicker.getValue())
                     .promisedAmount(new BigDecimal(amountField.getText().trim().replace(",", ".")))
-                    .status(DeclarationStatus.OCZEKUJACA)
+                    .status(DeclarationStatus.PENDING)
+                    .createdAt(LocalDate.now())
                     .build();
         });
     }

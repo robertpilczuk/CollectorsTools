@@ -202,40 +202,55 @@ public class DebtorDetailWindow extends Stage {
         amountCol.setPrefWidth(110);
 
         TableColumn<Declaration, String> statusCol = new TableColumn<>("Status");
-        statusCol.setCellValueFactory(d ->
-                new javafx.beans.property.SimpleStringProperty(d.getValue().getStatus().getDisplayName()));
-        statusCol.setPrefWidth(110);
+        statusCol.setCellValueFactory(d -> {
+            Declaration decl = d.getValue();
+            String label = decl.getStatus().getDisplayName();
+            // Wplata po terminie to nadal dotrzymanie — ale windykator musi widziec roznice
+            if (decl.getStatus() == DeclarationStatus.FULFILLED && decl.isPaidLate()) {
+                label += " (po terminie)";
+            }
+            return new javafx.beans.property.SimpleStringProperty(label);
+        });
+        statusCol.setPrefWidth(150);
         statusCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) { setText(null); setStyle(""); return; }
+                Declaration d = (getTableRow() == null) ? null : (Declaration) getTableRow().getItem();
+                if (empty || item == null || d == null) { setText(null); setStyle(""); return; }
                 setText(item);
-                if (item.equals("Złamana"))      setStyle("-fx-text-fill: #e74c3c; -fx-font-weight: bold;");
-                else if (item.equals("Dotrzymana")) setStyle("-fx-text-fill: #27ae60; -fx-font-weight: bold;");
-                else                                setStyle("-fx-text-fill: #e67e22;");
+                setStyle(switch (d.getStatus()) {
+                    case FULFILLED           -> "-fx-text-fill: #27ae60; -fx-font-weight: bold;";
+                    case PARTIALLY_FULFILLED -> "-fx-text-fill: #2980b9; -fx-font-weight: bold;";
+                    case BROKEN              -> "-fx-text-fill: #e74c3c; -fx-font-weight: bold;";
+                    case CANCELLED           -> "-fx-text-fill: #95a5a6; -fx-font-style: italic;";
+                    case PENDING             -> "-fx-text-fill: #e67e22;";
+                });
             }
         });
 
-        TableColumn<Declaration, String> reasonCol = new TableColumn<>("Powód złamania");
+        TableColumn<Declaration, String> reasonCol = new TableColumn<>("Powód");
         reasonCol.setCellValueFactory(d ->
                 new javafx.beans.property.SimpleStringProperty(
-                        d.getValue().getBrokenReason() != null ? d.getValue().getBrokenReason() : ""));
+                        d.getValue().getReason() != null ? d.getValue().getReason() : ""));
         reasonCol.setPrefWidth(200);
 
         TableColumn<Declaration, Void> actionsCol = new TableColumn<>("Akcje");
-        actionsCol.setPrefWidth(220);
+        actionsCol.setPrefWidth(280);
         actionsCol.setCellFactory(col -> new TableCell<>() {
             final Button fulfillBtn = new Button("✓ Wpłata");
             final Button brokenBtn  = new Button("✕ Złamana");
+            final Button cancelBtn  = new Button("Anuluj");
             final Button deleteBtn  = new Button("Usuń");
             {
                 fulfillBtn.getStyleClass().add("btn-ok");
                 brokenBtn.getStyleClass().add("btn-danger");
+                cancelBtn.getStyleClass().addAll("btn-detail", "btn-sm");
                 deleteBtn.getStyleClass().addAll("btn-danger", "btn-sm");
 
                 fulfillBtn.setOnAction(e -> markFulfilled(getTableView().getItems().get(getIndex())));
                 brokenBtn.setOnAction(e ->  markBroken(getTableView().getItems().get(getIndex())));
+                cancelBtn.setOnAction(e ->  markCancelled(getTableView().getItems().get(getIndex())));
                 deleteBtn.setOnAction(e ->  deleteDeclaration(getTableView().getItems().get(getIndex())));
             }
             @Override
@@ -244,8 +259,15 @@ public class DebtorDetailWindow extends Stage {
                 if (empty) { setGraphic(null); return; }
                 Declaration d = getTableView().getItems().get(getIndex());
                 HBox box = new HBox(4);
-                if (d.getStatus() == DeclarationStatus.OCZEKUJACA) {
-                    box.getChildren().addAll(fulfillBtn, brokenBtn);
+                switch (d.getStatus()) {
+                    // Oczekujaca — pelny zestaw decyzji windykatora
+                    case PENDING, PARTIALLY_FULFILLED ->
+                            box.getChildren().addAll(fulfillBtn, brokenBtn, cancelBtn);
+                    // Zlamana — wplata po terminie nadal mozliwa, powod zlamania zostaje
+                    case BROKEN ->
+                            box.getChildren().addAll(fulfillBtn, cancelBtn);
+                    // Rozliczona lub wycofana — bez zmian stanu
+                    case FULFILLED, CANCELLED -> { }
                 }
                 box.getChildren().add(deleteBtn);
                 setGraphic(box);
@@ -432,6 +454,31 @@ public class DebtorDetailWindow extends Stage {
         dialog.showAndWait().ifPresent(reason -> {
             declarationService.markAsBroken(d.getId(), reason);
             loadDeclarations();
+        });
+    }
+
+    /**
+     * Anulowanie wycofuje deklarację ze wskaźnika skuteczności, dlatego
+     * uzasadnienie jest obowiązkowe — puste pole przerywa operację.
+     */
+    private void markCancelled(Declaration d) {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Anulowanie deklaracji");
+        dialog.setHeaderText("Deklaracja zostanie wycofana z ewidencji i nie wliczy się\n"
+                + "do skuteczności. Podaj uzasadnienie:");
+        dialog.setContentText("Uzasadnienie:");
+        dialog.showAndWait().ifPresent(reason -> {
+            if (reason.isBlank()) {
+                showAlert(Alert.AlertType.WARNING, "Anulowanie deklaracji",
+                        "Bez uzasadnienia nie można anulować deklaracji. Operacja przerwana.");
+                return;
+            }
+            try {
+                declarationService.markAsCancelled(d.getId(), reason);
+                loadDeclarations();
+            } catch (IllegalArgumentException ex) {
+                showAlert(Alert.AlertType.WARNING, "Anulowanie niemożliwe", ex.getMessage());
+            }
         });
     }
 

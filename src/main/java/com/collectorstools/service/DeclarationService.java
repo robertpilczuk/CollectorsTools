@@ -36,7 +36,10 @@ public class DeclarationService {
     public Declaration save(Declaration declaration) {
         validate(declaration);
         if (declaration.getStatus() == null) {
-            declaration.setStatus(DeclarationStatus.OCZEKUJACA);
+            declaration.setStatus(DeclarationStatus.PENDING);
+        }
+        if (declaration.getCreatedAt() == null) {
+            declaration.setCreatedAt(LocalDate.now());
         }
         try {
             return declarationRepository.save(declaration);
@@ -90,10 +93,18 @@ public class DeclarationService {
 
     /**
      * Oznacza deklarację jako dotrzymaną (wpłata nastąpiła).
+     *
+     * <p>Dozwolone także dla deklaracji złamanej — wpłata po terminie jest
+     * w windykacji zjawiskiem codziennym. Powód złamania zostaje zachowany,
+     * a fakt opóźnienia wynika z porównania daty wpłaty z terminem.
      */
     public void markAsFulfilled(long declarationId, LocalDate paymentDate) {
         findById(declarationId).ifPresent(d -> {
-            d.setStatus(DeclarationStatus.DOTRZYMANA);
+            if (d.getStatus() == DeclarationStatus.CANCELLED) {
+                throw new IllegalArgumentException(
+                        "Deklaracja została anulowana — nie można zarejestrować do niej wpłaty.");
+            }
+            d.setStatus(DeclarationStatus.FULFILLED);
             d.setPaymentDate(paymentDate != null ? paymentDate : LocalDate.now());
             update(d);
         });
@@ -104,8 +115,31 @@ public class DeclarationService {
      */
     public void markAsBroken(long declarationId, String reason) {
         findById(declarationId).ifPresent(d -> {
-            d.setStatus(DeclarationStatus.ZLAMANA);
+            d.setStatus(DeclarationStatus.BROKEN);
             d.setBrokenReason(reason);
+            update(d);
+        });
+    }
+
+    /**
+     * Wycofuje deklarację z ewidencji.
+     *
+     * <p>Uzasadnienie jest obowiązkowe — anulowanie usuwa deklarację ze wskaźnika
+     * skuteczności, więc bez powodu byłoby to furtką do poprawiania statystyk.
+     * Deklaracji już rozliczonej anulować nie można.
+     */
+    public void markAsCancelled(long declarationId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Anulowanie deklaracji wymaga podania uzasadnienia.");
+        }
+        findById(declarationId).ifPresent(d -> {
+            if (d.getStatus() == DeclarationStatus.FULFILLED
+                    || d.getStatus() == DeclarationStatus.PARTIALLY_FULFILLED) {
+                throw new IllegalArgumentException(
+                        "Nie można anulować deklaracji, do której zarejestrowano wpłatę.");
+            }
+            d.setStatus(DeclarationStatus.CANCELLED);
+            d.setCancelledReason(reason);
             update(d);
         });
     }
@@ -133,16 +167,20 @@ public class DeclarationService {
     public List<Declaration> findUpcoming(int days) {
         LocalDate today = LocalDate.now();
         return findByDateRange(today, today.plusDays(days)).stream()
-                .filter(d -> d.getStatus() == DeclarationStatus.OCZEKUJACA)
+                .filter(d -> d.getStatus() == DeclarationStatus.PENDING)
                 .toList();
     }
 
     /**
-     * Suma obiecanych kwot deklaracji dłużnika (tylko oczekujące i dotrzymane).
+     * Suma obiecanych kwot deklaracji dłużnika — pomija złamane i anulowane.
+     *
+     * <p>Odpowiada na pytanie "na ile realnie mogę liczyć", a nie "ile mi naobiecywano":
+     * obietnica niedotrzymana albo wycofana nie jest wartością do prognozowania.
      */
     public BigDecimal sumByDebtorId(long debtorId) {
         return findByDebtorId(debtorId).stream()
-                .filter(d -> d.getStatus() != DeclarationStatus.ZLAMANA)
+                .filter(d -> d.getStatus() != DeclarationStatus.BROKEN
+                        && d.getStatus() != DeclarationStatus.CANCELLED)
                 .map(Declaration::getPromisedAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }

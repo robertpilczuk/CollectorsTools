@@ -130,15 +130,21 @@ public class MainWindow {
     private void refreshStats() {
         long debtors = debtorService.count();
         BigDecimal remaining = debtService.sumAllRemaining();
-        long pending = declarationService.countByStatus(DeclarationStatus.OCZEKUJACA);
-        long kept = declarationService.countByStatus(DeclarationStatus.DOTRZYMANA);
-        long broken = declarationService.countByStatus(DeclarationStatus.ZLAMANA);
-        long finalized = kept + broken;
+        long pending = declarationService.countByStatus(DeclarationStatus.PENDING);
+        long kept = declarationService.countByStatus(DeclarationStatus.FULFILLED);
+        long partial = declarationService.countByStatus(DeclarationStatus.PARTIALLY_FULFILLED);
+        long broken = declarationService.countByStatus(DeclarationStatus.BROKEN);
+
+        // Skutecznosc liczona tylko z deklaracji rozstrzygnietych. Oczekujace jeszcze
+        // sie nie rozstrzygnely, anulowane zostaly wycofane — obie grupy sa wylaczone,
+        // zeby wskaznik nie rozwadnial sie przy duzej liczbie swiezych obietnic.
+        long finalized = kept + partial + broken;
         double keptPct = finalized == 0 ? 0.0 : (kept * 100.0 / finalized);
 
         debtorsStat.setText("Dłużnicy: " + debtors);
         remainingStat.setText(String.format("Suma długów: %,.2f PLN", remaining));
-        pendingStat.setText("Oczekujące deklaracje: " + pending);
+        pendingStat.setText("Oczekujące deklaracje: " + pending
+                + (partial > 0 ? "  (częściowe: " + partial + ")" : ""));
         keptStat.setText(String.format("Dotrzymane deklaracje: %.0f%%", keptPct));
     }
 
