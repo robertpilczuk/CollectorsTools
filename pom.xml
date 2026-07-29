@@ -73,6 +73,15 @@
             <version>3.0.3</version>
         </dependency>
 
+        <!-- Import XLSX — eksporty wierzycieli przychodzą w formacie Excela.
+             Zależność jest ciężka (xmlbeans, commons-compress), ale wymaganie od
+             użytkownika konwersji pliku do CSV byłoby antywzorcem wdrożeniowym. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.3.0</version>
+        </dependency>
+
         <!-- Logowanie — sqlite-jdbc i pdfbox używają SLF4J, dotąd bez implementacji.
              slf4j-api musi być zadeklarowane wprost: sqlite-jdbc ciągnie wersję 1.7.36,
              a mediacja Mavena wybrałaby ją zamiast 2.x wymaganej przez Logback.

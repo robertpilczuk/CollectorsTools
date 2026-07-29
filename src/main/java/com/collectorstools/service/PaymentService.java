@@ -123,6 +123,15 @@ public class PaymentService {
             Payment payment = paymentRepository.findById(paymentId)
                     .orElseThrow(() -> new BusinessRuleException("Nie znaleziono wpłaty do wycofania."));
 
+            // Wpłata z importu jest zapisem historycznym: saldo w eksporcie wierzyciela
+            // już ją uwzględniało, więc nigdy go nie pomniejszyła. Wycofanie dodałoby
+            // do salda kwotę, której nigdy z niego nie odjęto.
+            if (Payment.SOURCE_IMPORT.equals(payment.getSource())) {
+                throw new BusinessRuleException(
+                        "Ta wpłata pochodzi z importu danych historycznych i nie wpływa na saldo sprawy. "
+                                + "Nie można jej wycofać — służy wyłącznie jako ślad w historii.");
+            }
+
             Debt debt = debtRepository.findById(payment.getDebtId())
                     .orElseThrow(() -> new BusinessRuleException("Nie znaleziono sprawy powiązanej z wpłatą."));
 

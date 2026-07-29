@@ -503,6 +503,75 @@ Testy: 146 → 169.
 
 ---
 
+## Etap 8b — silnik importu XLSX
+
+Import jednego wiersza eksportu tworzy nawet sześć obiektów: dłużnika, jego numery
+telefonu, sprawę, kontakt z wizyty, deklarację i wpłatę historyczną. Zapis odbywa się
+w jednej transakcji na wiersz — sprawa bez salda albo dłużnik bez sprawy byłyby gorsze
+od wiersza pominiętego. Błąd pojedynczego wiersza nie przerywa całego importu.
+
+### Warstwa mapowania nagłówków
+
+Każdy wierzyciel nazywa kolumny po swojemu, więc pola systemu znają listy synonimów,
+a dopasowanie pomija wielkość liter, znaki diakrytyczne i nadmiarowe spacje. Przypisanie
+automatyczne można nadpisać ręcznie — plik od nowego zleceniodawcy prędzej czy później
+nazwie kolumnę inaczej, niż przewiduje słownik, i użytkownik musi móc wskazać ją sam,
+bez zmiany w kodzie.
+
+### Wpłata historyczna nie zmienia salda
+
+Najważniejsza decyzja tego etapu. Saldo w eksporcie jest saldem **bieżącym**, więc
+uwzględnia już ostatnią wpłatę odnotowaną przez wierzyciela. Przeprowadzenie jej przez
+`PaymentService` odjęłoby kwotę po raz drugi i zaniżyło zadłużenie całego portfela.
+
+Wpłaty z importu zapisywane są więc bezpośrednio, ze źródłem `IMPORT`, wyłącznie jako
+ślad historyczny. Z tego samego powodu **nie podlegają wycofaniu** — cofnięcie dodałoby
+do salda kwotę, której nigdy z niego nie odjęto.
+
+### Powtórzony PESEL to nie błąd
+
+Poprzedni importer CSV odrzucał wiersz z powtórzonym numerem PESEL. Dla tego pliku
+oznaczałoby to utratę 16 spraw należących do osób mających ich po kilka. Teraz powtórzony
+PESEL oznacza dopięcie kolejnej sprawy do istniejącego dłużnika, a podgląd pokazuje to
+wprost.
+
+### Dwa błędy, które ujawniły się dopiero na prawdziwym pliku
+
+**Pole „Sąd" zabierało kolumnę „Sygnatura sądowa".** Synonim `sad` mieści się
+w znormalizowanym nagłówku `sygnatura sadowa`, więc przy jednym przebiegu dopasowania
+pole „Sąd" zajmowało kolumnę sygnatury, a właściwa kolumna „Sąd" zostawała nieprzypisana.
+Dopasowanie odbywa się teraz w dwóch przebiegach: najpierw dokładne dla wszystkich pól,
+dopiero potem częściowe.
+
+**Zerowa kwota ostatniej wpłaty wywalała całą sprawę.** Eksport odnotowuje czasem wpłatę
+o kwocie zerowej — zapis techniczny, nie wpłata. Baza słusznie ją odrzucała
+(`CHECK amount > 0`), ale przez wycofanie transakcji przepadał **cały wiersz**: dłużnik,
+sprawa, telefony i deklaracja. Trzy sprawy o łącznej wartości 112 150,56 zł nie trafiały
+do bazy z powodu pola, które nic nie wnosiło. Teraz taka wpłata jest pomijana wraz
+z zastrzeżeniem, a sprawa importuje się normalnie.
+
+Żaden z tych błędów nie wyszedłby z testów jednostkowych — oba wymagały uruchomienia
+importu na rzeczywistym pliku.
+
+### Wynik importu rzeczywistego pliku
+
+| | |
+|---|---|
+| wiersze zaimportowane | **171 / 171**, zero odrzuconych |
+| suma sald | **2 145 485,41 zł** — co do grosza zgodna z sumą w pliku |
+| dłużnicy / sprawy | 155 / 171 (16 osób z kilkoma sprawami) |
+| numery telefonu | 245 |
+| kontakty z wizyt | 46 — tyle, ile wierszy oznaczonych „tak" |
+| deklaracje | 68 — tyle, ile obietnic odczytanych pewnie |
+| wpłaty historyczne | 164 |
+| sprawy niespójne, salda ujemne, naruszenia kluczy obcych | **0** |
+
+Każda liczba zgadza się z niezależną analizą pliku wykonaną przed rozpoczęciem prac.
+
+Testy: 169 → 202.
+
+---
+
 ## Uwaga do historii commitów
 
 Etapy 4a, 4b i 4c trafiły do **jednego commita** `254a933`, którego opis odnosi się
