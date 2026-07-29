@@ -278,6 +278,51 @@ ma harnessu do testowania JavaFX. Weryfikacja odbywa się przez uruchomienie apl
 
 ---
 
+## Etap 5c — testy interfejsu i rozbicie salda w formularzu
+
+Dwa braki zgłoszone przy zamykaniu Etapu 5b: logika dialogów nie była objęta testami,
+a formularz sprawy nie pozwalał wpisać rozbicia salda, przez co edycja sprawy z importu
+kończyła się odrzuceniem przez regułę BR-12.
+
+### TestFX bez robota
+
+Dodane `testfx-core` i `testfx-junit5`. Testy **nie sterują myszą ani klawiaturą** —
+uruchamiają toolkit JavaFX, tworzą dialog na wątku aplikacji, ustawiają wartości pól
+i sprawdzają stan przycisku zapisu oraz wynik zwracany przez formularz.
+
+Powód: sprawdzana jest logika, nie wygląd. Klikanie robotem byłoby wolniejsze
+i znacznie bardziej kruche, a nie dałoby nic ponad to.
+
+Pola dialogów dostały identyfikatory (`#principal`, `#closureStatus`…), żeby testy mogły
+je odnaleźć w drzewie sceny bez sięgania do prywatnych pól klasy.
+
+Pokrycie:
+
+- **`DebtFormDialogTest`** — 8 testów, w tym **regresja na błąd z Etapu 5b**: edycja
+  sprawy sprawdzana pod kątem zachowania jedenastu pól spoza formularza, łącznie
+  ze stanem zamknięcia, datą i przyczyną
+- **`CaseClosureDialogTest`** — 8 testów reguł BR-13 i BR-14 na poziomie interfejsu
+
+### Rozbicie salda w formularzu sprawy
+
+Doszły pola kapitał, odsetki i koszty wraz z komunikatem pokazującym na bieżąco, czy
+suma zgadza się z kwotą pozostałą. Rozbicie pozostaje opcjonalne — puste pola oznaczają
+„nieznane", a nie zera.
+
+**Błąd znaleziony przy okazji:** `parseBigDecimal` rzucał wyjątkiem na pustym polu.
+Nowe pola są opcjonalne i podpięte pod listener reagujący na każde naciśnięcie klawisza,
+więc formularz wywaliłby się przy pierwszym wpisanym znaku. Parsowanie zwraca teraz
+`null` zamiast rzucać — pole w trakcie pisania przechodzi przez stany, które nie są
+jeszcze liczbą (sam minus, sam przecinek).
+
+Testy: 115 → 131.
+
+**Do rozwiązania w Etapie 11:** testy JavaFX wymagają dostępnego ekranu. Na maszynie
+deweloperskiej działają wprost; w CI na Linuksie trzeba je uruchamiać przez `xvfb-run`
+albo skonfigurować tryb headless.
+
+---
+
 ## Uwaga do historii commitów
 
 Etapy 4a, 4b i 4c trafiły do **jednego commita** `254a933`, którego opis odnosi się

@@ -69,6 +69,9 @@ public class CaseClosureDialog extends Dialog<CaseClosureDialog.Result> {
 
         statusCombo.getItems().addAll(options);
         statusCombo.setMaxWidth(Double.MAX_VALUE);
+        // Identyfikatory pozwalają testom odnaleźć pola w drzewie sceny
+        statusCombo.setId("closureStatus");
+        reasonArea.setId("closureReason");
         if (options.size() == 1) {
             statusCombo.setValue(options.get(0));
         }

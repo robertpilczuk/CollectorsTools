@@ -52,6 +52,20 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- TestFX — testy logiki formularzy JavaFX -->
+        <dependency>
+            <groupId>org.testfx</groupId>
+            <artifactId>testfx-core</artifactId>
+            <version>4.0.18</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testfx</groupId>
+            <artifactId>testfx-junit5</artifactId>
+            <version>4.0.18</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- PDF export (S2) -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
