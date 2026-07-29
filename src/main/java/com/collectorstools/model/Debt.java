@@ -37,6 +37,11 @@ public class Debt {
     private String creditStatus;        // Status kredytu u wierzyciela
     private Boolean settlementAllowed;  // Czy wierzyciel dopuszcza ugodę
 
+    // Stan sprawy
+    private DebtStatus status;
+    private LocalDate closedAt;
+    private String closeReason;         // Wymagana przy zamknięciu sprawy z dodatnim saldem
+
     // Postępowanie sądowe
     private String court;
     private String courtSignature;      // Sygnatura sądowa
@@ -55,6 +60,17 @@ public class Debt {
      */
     public BigDecimal getComponentsSum() {
         return nz(principalAmount).add(nz(interestAmount)).add(nz(costAmount));
+    }
+
+    public boolean isClosed() {
+        return status != null && status.isClosed();
+    }
+
+    /**
+     * Czy saldo zostało spłacone w całości.
+     */
+    public boolean isSettled() {
+        return remainingAmount != null && remainingAmount.compareTo(BigDecimal.ZERO) == 0;
     }
 
     private static BigDecimal nz(BigDecimal value) {

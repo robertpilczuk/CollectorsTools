@@ -46,9 +46,15 @@ class DeclarationLifecycleTest {
         conn.close();
     }
 
+    /**
+     * Deklaracja z terminem w przeszłości musi mieć odpowiednio wcześniejszą datę
+     * zarejestrowania — obietnica nie może mieć terminu sprzed momentu jej złożenia.
+     */
     private Declaration save(LocalDate date, String amount, DeclarationStatus status) {
+        LocalDate createdAt = date.isBefore(LocalDate.now()) ? date : LocalDate.now();
         return service.save(Declaration.builder()
                 .debtorId(debtorId)
+                .createdAt(createdAt)
                 .promisedDate(date)
                 .promisedAmount(new BigDecimal(amount))
                 .status(status)

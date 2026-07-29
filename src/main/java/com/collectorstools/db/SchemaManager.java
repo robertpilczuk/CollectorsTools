@@ -42,7 +42,8 @@ public class SchemaManager {
             "V1__baseline.sql",
             "V2__declaration_statuses.sql",
             "V3__debt_details_and_phones.sql",
-            "V4__payments.sql"
+            "V4__payments.sql",
+            "V5__debt_status.sql"
     };
 
     private final Connection conn;

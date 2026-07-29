@@ -34,13 +34,15 @@ public class DeclarationService {
     }
 
     public Declaration save(Declaration declaration) {
-        validate(declaration);
+        // Wartości domyślne przed walidacją — reguła "termin nie wcześniejszy
+        // niż data utworzenia" musi mieć obie daty do porównania
         if (declaration.getStatus() == null) {
             declaration.setStatus(DeclarationStatus.PENDING);
         }
         if (declaration.getCreatedAt() == null) {
             declaration.setCreatedAt(LocalDate.now());
         }
+        validate(declaration);
         try {
             return declarationRepository.save(declaration);
         } catch (SQLException e) {
@@ -210,5 +212,15 @@ public class DeclarationService {
             throw new IllegalArgumentException("Data deklaracji jest wymagana.");
         if (declaration.getPromisedAmount() == null || declaration.getPromisedAmount().compareTo(BigDecimal.ZERO) <= 0)
             throw new IllegalArgumentException("Kwota deklaracji musi być większa od zera.");
+
+        // Obietnica z terminem wcześniejszym niż moment jej złożenia jest sprzeczna
+        // sama w sobie. Deklarację wpisywaną wstecz (wizyta sprzed kilku dni, import
+        // danych historycznych) rejestruje się razem z faktyczną datą utworzenia.
+        if (declaration.getCreatedAt() != null
+                && declaration.getPromisedDate().isBefore(declaration.getCreatedAt())) {
+            throw new IllegalArgumentException(String.format(
+                    "Termin deklaracji (%s) nie może być wcześniejszy niż data jej zarejestrowania (%s).",
+                    declaration.getPromisedDate(), declaration.getCreatedAt()));
+        }
     }
 }

@@ -1,10 +1,12 @@
 package com.collectorstools.service;
 
 import com.collectorstools.model.Debt;
+import com.collectorstools.model.DebtStatus;
 import com.collectorstools.repository.DebtRepository;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -23,11 +25,74 @@ public class DebtService {
 
     public Debt save(Debt debt) {
         validate(debt);
+        if (debt.getStatus() == null) {
+            debt.setStatus(DebtStatus.ACTIVE);
+        }
         try {
             return debtRepository.save(debt);
         } catch (SQLException e) {
             throw new RuntimeException("Błąd zapisu sprawy: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Zamyka sprawę w podanym stanie końcowym.
+     *
+     * <p>Zamknięcie sprawy z dodatnim saldem wymaga uzasadnienia — umorzenie,
+     * przedawnienie czy przekazanie do sądu to decyzje, za które ktoś odpowiada,
+     * a nie techniczne odhaczenie pozycji na liście. Bez tego wymogu najprostszym
+     * sposobem na poprawienie statystyk byłoby zamykanie trudnych spraw.
+     *
+     * <p>Jako spłaconą można zamknąć wyłącznie sprawę z saldem zerowym.
+     */
+    public void closeCase(long debtId, DebtStatus status, String reason) {
+        if (status == null || !status.isClosed()) {
+            throw new IllegalArgumentException("Wskaż stan, w jakim sprawa ma zostać zamknięta.");
+        }
+
+        Debt debt = findById(debtId).orElseThrow(
+                () -> new IllegalArgumentException("Nie znaleziono sprawy do zamknięcia."));
+
+        if (debt.isClosed()) {
+            throw new IllegalArgumentException("Sprawa jest już zamknięta ("
+                    + debt.getStatus().getDisplayName() + ").");
+        }
+
+        boolean hasBalance = debt.getRemainingAmount() != null
+                && debt.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0;
+
+        if (status.requiresZeroBalance() && hasBalance) {
+            throw new IllegalArgumentException(
+                    "Sprawy z niespłaconym saldem nie można zamknąć jako spłaconej. "
+                            + "Wybierz inną przyczynę zamknięcia.");
+        }
+        if (hasBalance && (reason == null || reason.isBlank())) {
+            throw new IllegalArgumentException(
+                    "Zamknięcie sprawy z niespłaconym saldem wymaga podania przyczyny.");
+        }
+
+        debt.setStatus(status);
+        debt.setClosedAt(LocalDate.now());
+        debt.setCloseReason(reason != null && !reason.isBlank() ? reason.trim() : null);
+        update(debt);
+    }
+
+    /**
+     * Przywraca sprawę do obsługi — na przykład po tym, jak zamknięto ją omyłkowo
+     * albo gdy dłużnik odezwał się po umorzeniu.
+     */
+    public void reopenCase(long debtId) {
+        Debt debt = findById(debtId).orElseThrow(
+                () -> new IllegalArgumentException("Nie znaleziono sprawy."));
+
+        if (!debt.isClosed()) {
+            throw new IllegalArgumentException("Sprawa jest już aktywna.");
+        }
+
+        debt.setStatus(DebtStatus.ACTIVE);
+        debt.setClosedAt(null);
+        debt.setCloseReason(null);
+        update(debt);
     }
 
     public void update(Debt debt) {
@@ -39,8 +104,20 @@ public class DebtService {
         }
     }
 
+    /**
+     * Usuwa sprawę.
+     *
+     * <p>Sprawa z zarejestrowanymi wpłatami jest nieusuwalna: skasowanie jej zabrałoby
+     * ze sobą historię finansową, której nie da się odtworzyć. Sprawę zakończoną
+     * zamyka się, a nie kasuje.
+     */
     public void delete(long id) {
         try {
+            if (debtRepository.hasPayments(id)) {
+                throw new IllegalArgumentException(
+                        "Nie można usunąć sprawy, do której zarejestrowano wpłaty. "
+                                + "Zamknij ją zamiast usuwać — historia wpłat musi zostać zachowana.");
+            }
             debtRepository.delete(id);
         } catch (SQLException e) {
             throw new RuntimeException("Błąd usunięcia sprawy: " + e.getMessage(), e);
@@ -118,14 +195,16 @@ public class DebtService {
      * przychodzą z arkuszy jako liczby zmiennoprzecinkowe.
      *
      * <p>Sprawa wprowadzona ręcznie może nie mieć rozbicia salda — wtedy reguła nie
-     * ma zastosowania. Weryfikujemy tylko, gdy podano choć jeden składnik, żeby nie
-     * blokować pracy windykatorowi, który zna wyłącznie kwotę łączną.
+     * ma zastosowania. Za "brak rozbicia" uznajemy zerową sumę składników, a nie ich
+     * nieustawienie: kolumny w bazie są NOT NULL DEFAULT 0, więc sprawa zapisana bez
+     * rozbicia wraca z odczytu z zerami, nie z wartościami pustymi. Rozpoznawanie po
+     * {@code null} działałoby wyłącznie do pierwszego odczytu z bazy.
+     *
+     * <p>Ten sam warunek stosuje {@code PaymentService} przy dzieleniu wpłaty między
+     * składniki — obie reguły muszą widzieć "brak rozbicia" tak samo.
      */
     private void validateComponentsMatchBalance(Debt debt) {
-        boolean anyProvided = debt.getPrincipalAmount() != null
-                || debt.getInterestAmount() != null
-                || debt.getCostAmount() != null;
-        if (!anyProvided) {
+        if (debt.getComponentsSum().compareTo(BigDecimal.ZERO) == 0) {
             return;
         }
 

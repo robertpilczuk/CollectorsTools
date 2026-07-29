@@ -2,6 +2,7 @@ package com.collectorstools.repository;
 
 import com.collectorstools.db.DatabaseManager;
 import com.collectorstools.model.Debt;
+import com.collectorstools.model.DebtStatus;
 
 import java.math.BigDecimal;
 import java.sql.*;
@@ -28,12 +29,13 @@ public class DebtRepository {
             debtor_id, case_number, creditor, original_creditor, portfolio, product, bank_account,
             total_amount, remaining_amount, principal_amount, interest_amount, cost_amount,
             case_category, credit_status, settlement_allowed, court, court_signature,
-            debt_date, service_start_date, enforcement_start_date, description
+            debt_date, service_start_date, enforcement_start_date, description,
+            status, closed_at, close_reason
         """;
 
     public Debt save(Debt debt) throws SQLException {
         String sql = "INSERT INTO debts (" + COLUMNS + ") VALUES ("
-                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, debt.getDebtorId());
             bindCommon(ps, debt, 2);
@@ -51,7 +53,8 @@ public class DebtRepository {
                              bank_account=?, total_amount=?, remaining_amount=?, principal_amount=?,
                              interest_amount=?, cost_amount=?, case_category=?, credit_status=?,
                              settlement_allowed=?, court=?, court_signature=?, debt_date=?,
-                             service_start_date=?, enforcement_start_date=?, description=?
+                             service_start_date=?, enforcement_start_date=?, description=?,
+                             status=?, closed_at=?, close_reason=?
             WHERE id=?
         """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -88,7 +91,26 @@ public class DebtRepository {
         ps.setString(i++, dateOrNull(debt.getServiceStartDate()));
         ps.setString(i++, dateOrNull(debt.getEnforcementStartDate()));
         ps.setString(i++, debt.getDescription());
+        ps.setString(i++, (debt.getStatus() != null ? debt.getStatus() : DebtStatus.ACTIVE).name());
+        ps.setString(i++, dateOrNull(debt.getClosedAt()));
+        ps.setString(i++, debt.getCloseReason());
         return i;
+    }
+
+    /**
+     * Czy do sprawy zarejestrowano jakąkolwiek wpłatę.
+     *
+     * <p>Sprawdzenie żyje w repozytorium spraw, bo korzysta z tego samego połączenia
+     * i nie wymaga wciągania kolejnej zależności do serwisu — a bez niego nie da się
+     * ochronić historii finansowej przed skasowaniem razem ze sprawą.
+     */
+    public boolean hasPayments(long debtId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM payments WHERE debt_id=? LIMIT 1")) {
+            ps.setLong(1, debtId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 
     private static BigDecimal zeroIfNull(BigDecimal value) {
@@ -178,6 +200,9 @@ public class DebtRepository {
                 .serviceStartDate(parseDate(rs.getString("service_start_date")))
                 .enforcementStartDate(parseDate(rs.getString("enforcement_start_date")))
                 .description(rs.getString("description"))
+                .status(DebtStatus.valueOf(rs.getString("status")))
+                .closedAt(parseDate(rs.getString("closed_at")))
+                .closeReason(rs.getString("close_reason"))
                 .build();
     }
 

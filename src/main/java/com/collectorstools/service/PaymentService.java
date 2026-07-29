@@ -2,6 +2,7 @@ package com.collectorstools.service;
 
 import com.collectorstools.db.TransactionManager;
 import com.collectorstools.model.Debt;
+import com.collectorstools.model.DebtStatus;
 import com.collectorstools.model.Declaration;
 import com.collectorstools.model.DeclarationStatus;
 import com.collectorstools.model.Payment;
@@ -78,6 +79,7 @@ public class PaymentService {
             paymentRepository.save(payment);
 
             debt.setRemainingAmount(remaining.subtract(payment.getAmount()));
+            closeIfFullyRepaid(debt, payment.getPaymentDate());
             debtRepository.update(debt);
 
             if (declaration != null) {
@@ -104,6 +106,7 @@ public class PaymentService {
             debt.setCostAmount(orZero(debt.getCostAmount()).add(orZero(payment.getAllocatedCost())));
             debt.setInterestAmount(orZero(debt.getInterestAmount()).add(orZero(payment.getAllocatedInterest())));
             debt.setPrincipalAmount(orZero(debt.getPrincipalAmount()).add(orZero(payment.getAllocatedPrincipal())));
+            reopenIfNoLongerRepaid(debt);
             debtRepository.update(debt);
 
             Long declarationId = payment.getDeclarationId();
@@ -258,6 +261,37 @@ public class PaymentService {
             declaration.setPaymentDate(lastPaymentDate);
         }
         declarationRepository.update(declaration);
+    }
+
+    /**
+     * Spłata całości salda zamyka sprawę automatycznie.
+     *
+     * <p>Zerowe saldo nie pozostawia miejsca na decyzję windykatora — sprawa jest
+     * spłacona i nie powinna dłużej figurować na liście zadań ani w sumie długów.
+     * Zamykamy tylko sprawy aktywne; stanu ustawionego ręcznie (umorzenie, droga
+     * sądowa) wpłata nie nadpisuje.
+     */
+    private void closeIfFullyRepaid(Debt debt, LocalDate paymentDate) {
+        if (debt.getRemainingAmount().compareTo(BigDecimal.ZERO) != 0) {
+            return;
+        }
+        if (debt.getStatus() == null || debt.getStatus() == DebtStatus.ACTIVE) {
+            debt.setStatus(DebtStatus.CLOSED_PAID);
+            debt.setClosedAt(paymentDate);
+        }
+    }
+
+    /**
+     * Wycofanie wpłaty przywraca saldo, więc sprawa zamknięta jako spłacona
+     * wraca do obsługi. Zamknięć z innych przyczyn operacja nie rusza.
+     */
+    private void reopenIfNoLongerRepaid(Debt debt) {
+        if (debt.getStatus() == DebtStatus.CLOSED_PAID
+                && debt.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0) {
+            debt.setStatus(DebtStatus.ACTIVE);
+            debt.setClosedAt(null);
+            debt.setCloseReason(null);
+        }
     }
 
     private boolean isOverdue(Declaration declaration) {

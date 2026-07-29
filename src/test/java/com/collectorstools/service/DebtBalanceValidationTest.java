@@ -98,6 +98,24 @@ class DebtBalanceValidationTest {
     }
 
     @Test
+    @DisplayName("Sprawę bez rozbicia salda można zaktualizować po odczycie z bazy")
+    void allowsUpdatingDebtWithoutBreakdownAfterReload() {
+        // Regresja: kolumny składników są NOT NULL DEFAULT 0, więc sprawa zapisana
+        // bez rozbicia wraca z odczytu z zerami. Walidacja rozpoznająca "brak rozbicia"
+        // po wartości null uznawała ją za sprawę z rozbiciem 0+0+0 i blokowała
+        // każdą aktualizację — w tym zamknięcie sprawy.
+        Debt saved = service.save(base().build());
+
+        Debt reloaded = service.findById(saved.getId()).orElseThrow();
+        reloaded.setDescription("zmiana opisu");
+
+        service.update(reloaded);
+
+        assertEquals("zmiana opisu",
+                service.findById(saved.getId()).orElseThrow().getDescription());
+    }
+
+    @Test
     @DisplayName("Ujemny składnik salda jest odrzucany")
     void rejectsNegativeComponent() {
         assertThrows(IllegalArgumentException.class, () -> service.save(base()

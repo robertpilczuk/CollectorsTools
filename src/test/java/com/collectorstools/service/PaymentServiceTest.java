@@ -80,9 +80,12 @@ class PaymentServiceTest {
     }
 
     private Declaration declaration(String amount, LocalDate date) {
+        // Deklaracja z terminem w przeszłości była złożona wcześniej niż dziś
+        LocalDate createdAt = date.isBefore(LocalDate.now()) ? date : LocalDate.now();
         return declarationService.save(Declaration.builder()
                 .debtorId(debtorId)
                 .debtId(debtId)
+                .createdAt(createdAt)
                 .promisedDate(date)
                 .promisedAmount(new BigDecimal(amount))
                 .build());
