@@ -431,6 +431,78 @@ Testy: 141 → 146.
 
 ---
 
+## Etap 8a — parser kolumny „Komentarz do sprawy"
+
+Kolumna ma średnio 497 znaków i zawiera dane, których nie ma w żadnej innej kolumnie:
+ostatnią wpłatę, obietnicę spłaty, kategorię sprawy, zgodę na ugodę, status kredytu
+i dane o zatrudnieniu.
+
+### Najpierw pomiar, potem kod
+
+Przed napisaniem parsera zebrane zostały wzorce zapisu ze wszystkich 171 wierszy.
+Bez tego powstałby parser dopasowany do dwóch przykładów widzianych wcześniej.
+
+Pomiar pokazał podział na dwie warstwy:
+
+- **sekcje z etykietami** — format całkowicie regularny, np. ostatnia wpłata zawsze jako
+  `RRRR-MM-DD kwota`; 167 ze 171 wierszy
+- **treść ostatniego kontaktu** — swobodna notatka pisana w pośpiechu, w której obietnica
+  spłaty pojawia się w kilkunastu wariantach
+
+Warianty obietnicy spotkane w danych: kwota przed terminem i termin przed kwotą, waluta
+zapisana jako `PLN`, `ZŁ`, `ZL` albo wcale, separatory daty `,` `.` `/`, kwota otoczona
+znacznikami `#`, przyimek `DO` przed terminem, dwie daty w jednym zdaniu oraz —
+najważniejsze — **zaprzeczenia** w rodzaju „OBIETNICY SPŁATY NIE MA".
+
+### Zasada: parser nie zgaduje po cichu
+
+Odczyt dostaje poziom pewności. `HIGH` to kwota i termin odczytane jednoznacznie,
+`MEDIUM` to kwota bez terminu, `LOW` to zapis wymagający decyzji człowieka. Każde
+zastrzeżenie trafia do listy `warnings` razem z oryginalnym fragmentem notatki,
+żeby dało się sprawdzić odczyt.
+
+Jednostka waluty jest jedynym pewnym rozróżnieniem między kwotą a datą: zapis `31,12`
+może znaczyć jedno i drugie. Dlatego najpierw szukamy kwoty przy walucie, wycinamy ją
+z tekstu, a terminu szukamy dopiero w tym, co zostanie.
+
+Rok w terminach zapisanych bez roku ustalany jest względem daty eksportu: termin
+wypadający ponad trzy miesiące w przyszłość dotyczy roku poprzedniego.
+
+### Dwa błędy znalezione przez testy
+
+**Wzorzec fragmentu urywał się na ukośniku.** Notatki używają `/` jako separatora myśli,
+więc pierwotnie ograniczał on fragment obietnicy. Problem w tym, że ukośnik występuje też
+w terminach zapisanych jako `16/01` — obcięcie zabierało dacie miesiąc i termin przepadał.
+
+**Separator tysięcy w kwocie tworzył fałszywe odczyty.** W zapisie
+`OBIETNICA SPŁATY 10,02 100 PLN` wzorzec dopuszczający spację w liczbie sklejał końcówkę
+daty z kwotą i odczytywał 2100 zamiast 100. W badanym portfelu kwoty z separatorem tysięcy
+nie wystąpiły ani razu, więc obsługa została usunięta.
+
+Dwa kolejne błędy okazały się błędami w moich oczekiwaniach, nie w kodzie — dotyczyły
+terminów mieszczących się w tolerancji trzech miesięcy.
+
+### Skuteczność na rzeczywistym pliku
+
+| Pole | Odczytane |
+|---|---|
+| ostatnia wpłata | 167 / 171 |
+| kategoria sprawy, status kredytu, zgoda na ugodę | 166 / 171 |
+| pracodawca | 91 / 171 |
+| data wszczęcia egzekucji | 53 / 171 |
+
+Obietnice: **74 wykryte, w tym 68 z pełną pewnością** (92%), 2 bez terminu, 4 do przeglądu.
+Dodatkowo 3 zaprzeczenia rozpoznane poprawnie jako brak obietnicy — bez tego powstałyby
+trzy deklaracje, których dłużnicy nigdy nie złożyli.
+
+Przegląd przypadków `LOW` ujawnił wariant w pełni ustrukturyzowany
+(`KWOTA OBIETNICY: 300, DATA OBIETNICY: 2016-06-30`), występujący raz. Obsługa kosztowała
+sześć linii i jest całkowicie pewna, więc została dodana.
+
+Testy: 146 → 169.
+
+---
+
 ## Uwaga do historii commitów
 
 Etapy 4a, 4b i 4c trafiły do **jednego commita** `254a933`, którego opis odnosi się
