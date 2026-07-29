@@ -88,6 +88,22 @@ public class Xxx { ... }
 - Etykiety z `setMinWidth(130)`
 - CSS ładuj z obsługą błędu (`try/catch` na `getResource`)
 
+### Operacje wielotabelowe — zawsze w transakcji
+
+Każda operacja biznesowa zapisująca do więcej niż jednej tabeli musi przejść
+przez `TransactionManager`. Inaczej przerwanie w połowie zostawia bazę
+w stanie niespójnym — np. wpłatę bez zaktualizowanego salda sprawy.
+
+```java
+transactionManager.execute(() -> {
+    paymentRepository.save(payment);
+    debtRepository.updateRemainingAmount(debtId, newBalance);
+});
+```
+
+Wywołanie zagnieżdżone dołącza do transakcji zewnętrznej — serwis może
+bezpiecznie wołać inny serwis, który również używa transakcji.
+
 ### Walidacja
 
 Reguły biznesowe egzekwuje **warstwa serwisu**, nie formularz. UI może dodatkowo

@@ -30,6 +30,14 @@ Thumbs.db
 # === Notatki lokalne (workflow, backlog) ===
 CLAUDE.local.md
 
+# === DANE KLIENTA — NIGDY do repozytorium ===
+# Pliki zrodlowe zawieraja dane osobowe (PESEL, nazwiska, adresy).
+# Do repo trafiaja wylacznie dane zanonimizowane w src/main/resources/demo.
+data/
+/*.xlsx
+/*.xls
+/*.csv
+
 # === Paczki dystrybucyjne (jpackage/jlink) ===
 *.dmg
 *.pkg
