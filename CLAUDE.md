@@ -94,11 +94,21 @@ Reguły biznesowe egzekwuje **warstwa serwisu**, nie formularz. UI może dodatko
 blokować przycisk zapisu dla wygody użytkownika, ale nigdy nie jest jedynym
 miejscem walidacji — inaczej import CSV i przyszłe API ominą regułę.
 
-### Dodawanie nowej tabeli do bazy
+### Zmiany w schemacie bazy
 
-1. `CREATE TABLE IF NOT EXISTS` w `DatabaseManager.initSchema()`
-2. To samo `CREATE TABLE` w `DatabaseTestHelper.createTestConnection()`
+Schemat opisują wyłącznie pliki migracji w `src/main/resources/db/migrations`.
+Nie wolno definiować tabel w kodzie Javy — ten sam zestaw migracji stosują
+aplikacja i testy, więc powielenie definicji rozjechałoby oba schematy.
+
+1. Utwórz `V{n}__opis.sql` z kolejnym numerem
+2. Dopisz nazwę pliku na końcu tablicy `MIGRATIONS` w `SchemaManager`
 3. Model → Repozytorium → Serwis → UI → Testy
+
+Migracji już wydanej nigdy nie modyfikuj — bazy użytkowników mają ją
+zastosowaną i nie zobaczą zmiany. Zamiast tego dodaj kolejną migrację.
+
+Wersję schematu przechowuje `PRAGMA user_version` w pliku bazy. Każda migracja
+wykonuje się w transakcji: błąd cofa całość i zostawia bazę w poprzedniej wersji.
 
 ## Commity — Conventional Commits
 
