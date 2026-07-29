@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.model.AuditEntity;
+import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Debt;
 import com.collectorstools.model.DebtStatus;
 import com.collectorstools.repository.DebtRepository;
@@ -14,13 +16,24 @@ import java.util.Set;
 public class DebtService {
 
     private final DebtRepository debtRepository;
+    private final AuditService auditService;
 
     public DebtService() {
         this.debtRepository = new DebtRepository();
+        this.auditService = new AuditService();
     }
 
+    /**
+     * Konstruktor bez audytu — używany przez testy, które go nie weryfikują.
+     * Ścieżka produkcyjna zawsze przechodzi przez konstruktor bezargumentowy.
+     */
     public DebtService(DebtRepository debtRepository) {
+        this(debtRepository, AuditService.noOp());
+    }
+
+    public DebtService(DebtRepository debtRepository, AuditService auditService) {
         this.debtRepository = debtRepository;
+        this.auditService = auditService;
     }
 
     public Debt save(Debt debt) {
@@ -71,10 +84,16 @@ public class DebtService {
                     "Zamknięcie sprawy z niespłaconym saldem wymaga podania przyczyny.");
         }
 
+        DebtStatus previous = debt.getStatus();
         debt.setStatus(status);
         debt.setClosedAt(LocalDate.now());
         debt.setCloseReason(reason != null && !reason.isBlank() ? reason.trim() : null);
         update(debt);
+
+        auditService.record(AuditEntity.DEBT, debt.getId(), debt.getDebtorId(),
+                AuditOperation.CASE_CLOSED, "Stan sprawy",
+                previous != null ? previous.getDisplayName() : null,
+                status.getDisplayName(), debt.getCloseReason());
     }
 
     /**
@@ -89,10 +108,15 @@ public class DebtService {
             throw new IllegalArgumentException("Sprawa jest już aktywna.");
         }
 
+        DebtStatus previous = debt.getStatus();
         debt.setStatus(DebtStatus.ACTIVE);
         debt.setClosedAt(null);
         debt.setCloseReason(null);
         update(debt);
+
+        auditService.record(AuditEntity.DEBT, debt.getId(), debt.getDebtorId(),
+                AuditOperation.CASE_REOPENED, "Stan sprawy",
+                previous.getDisplayName(), DebtStatus.ACTIVE.getDisplayName(), null);
     }
 
     public void update(Debt debt) {
@@ -118,7 +142,15 @@ public class DebtService {
                         "Nie można usunąć sprawy, do której zarejestrowano wpłaty. "
                                 + "Zamknij ją zamiast usuwać — historia wpłat musi zostać zachowana.");
             }
+            // Opis sprawy trzeba odczytać przed usunięciem — potem nie będzie już czego opisać
+            Debt removed = debtRepository.findById(id).orElse(null);
             debtRepository.delete(id);
+
+            if (removed != null) {
+                auditService.record(AuditEntity.DEBT, id, removed.getDebtorId(),
+                        AuditOperation.DELETE, "Sprawa",
+                        removed.getCaseNumber() + " — " + removed.getCreditor(), null, null);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Błąd usunięcia sprawy: " + e.getMessage(), e);
         }

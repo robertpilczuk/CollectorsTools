@@ -104,6 +104,19 @@ transactionManager.execute(() -> {
 Wywołanie zagnieżdżone dołącza do transakcji zewnętrznej — serwis może
 bezpiecznie wołać inny serwis, który również używa transakcji.
 
+### Audyt operacji
+
+Operacje o skutkach finansowych i decyzje o stanie sprawy muszą trafiać do
+`AuditService`: wpłaty, zamknięcia spraw, zmiany stanu deklaracji, usunięcia.
+
+Serwisy przyjmują `AuditService` przez konstruktor. Konstruktory jednoargumentowe
+istnieją wyłącznie dla starszych testów i przekazują `AuditService.noOp()`, który
+niczego nie zapisuje — **nie wolno ich używać w kodzie produkcyjnym**. Ścieżka
+produkcyjna to konstruktor bezargumentowy, który wpina działającą instancję.
+
+Wpisy audytowe nie mają kluczy obcych do audytowanych obiektów: ślad musi przeżyć
+usunięcie tego, czego dotyczy.
+
 ### Walidacja
 
 Reguły biznesowe egzekwuje **warstwa serwisu**, nie formularz. UI może dodatkowo

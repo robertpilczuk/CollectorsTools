@@ -323,6 +323,57 @@ albo skonfigurować tryb headless.
 
 ---
 
+## Etap 6 — dziennik audytowy
+
+Istniejąca tabela `debtor_audit` rejestrowała wyłącznie zmiany pól dłużnika i była
+przywiązana do jednej encji kluczem obcym. Zmiany o skutkach finansowych — wpłaty,
+zamknięcia spraw, przejścia stanów deklaracji, usunięcia — nie zostawiały żadnego śladu.
+
+### Dwie decyzje projektowe
+
+**Brak kluczy obcych w `audit_log` jest celowy.** Wpis musi przeżyć usunięcie obiektu,
+którego dotyczy. Klucz obcy z `ON DELETE CASCADE` skasowałby ślad po usunięciu dłużnika,
+czyli dokładnie ten wpis, którego szuka się najczęściej. Kolumny `entity_id` i `debtor_id`
+są zwykłymi liczbami, bez więzów. Pilnuje tego osobny test.
+
+**`debtor_id` jest denormalizacją.** Pozwala pokazać pełną historię dłużnika jednym
+zapytaniem, zamiast łączyć audyt wpłat przez sprawy, a deklaracji przez dłużnika.
+
+Autor wpisu pochodzi z `CurrentUser` — jednego użytkownika lokalnego. Kolumna `user_id`
+istnieje od początku, więc wprowadzenie logowania sprowadzi się do podmiany źródła tej
+wartości, bez migracji danych i bez zmian w serwisach.
+
+### Luka znaleziona przez test
+
+Test sprawdzający, czy historia dłużnika obejmuje zdarzenia ze wszystkich encji, wykrył,
+że **zmiana stanu deklaracji wywołana wpłatą nie była audytowana**. `PaymentService`
+aktualizuje deklarację bezpośrednio przez repozytorium, z pominięciem `DeclarationService`,
+więc przejście „Oczekująca → Dotrzymana" następowało bez śladu — mimo że to jedno
+z najważniejszych zdarzeń w całym procesie. Wpis powstaje teraz w miejscu faktycznej zmiany.
+
+### Kompromis: konstruktory bez audytu
+
+Serwisy dostały dodatkowe konstruktory przyjmujące `AuditService`. Dotychczasowe
+konstruktory jednoargumentowe, używane przez istniejące testy, przekazują wariant
+`AuditService.noOp()`, który niczego nie zapisuje.
+
+Zaleta: żadnego testu nie trzeba było przepisywać. Ryzyko: użycie starszego konstruktora
+w kodzie produkcyjnym oznaczałoby brak audytu. Ścieżki produkcyjne przechodzą wyłącznie
+przez konstruktory bezargumentowe, które zawsze wpinają działającą instancję —
+udokumentowane w `CLAUDE.md`.
+
+### Objęte audytem
+
+wpłata i jej wycofanie · zamknięcie i ponowne otwarcie sprawy · każda zmiana stanu
+deklaracji, także wywołana wpłatą · usunięcie dłużnika i sprawy
+
+Zakładka „Historia zmian" łączy oba źródła w jedną oś czasu — dziennik audytowy i starszą
+tabelę zmian pól dłużnika. Operacje finansowe i decyzje o stanie sprawy są pogrubione.
+
+Testy: 131 → 141.
+
+---
+
 ## Uwaga do historii commitów
 
 Etapy 4a, 4b i 4c trafiły do **jednego commita** `254a933`, którego opis odnosi się

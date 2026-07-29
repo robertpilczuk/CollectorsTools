@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.model.AuditEntity;
+import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Declaration;
 import com.collectorstools.model.DeclarationStatus;
 import com.collectorstools.repository.DeclarationRepository;
@@ -13,13 +15,33 @@ import java.util.Optional;
 public class DeclarationService {
 
     private final DeclarationRepository declarationRepository;
+    private final AuditService auditService;
 
     public DeclarationService() {
         this.declarationRepository = new DeclarationRepository();
+        this.auditService = new AuditService();
     }
 
+    /**
+     * Konstruktor bez audytu — używany przez testy, które go nie weryfikują.
+     */
     public DeclarationService(DeclarationRepository declarationRepository) {
+        this(declarationRepository, AuditService.noOp());
+    }
+
+    public DeclarationService(DeclarationRepository declarationRepository, AuditService auditService) {
         this.declarationRepository = declarationRepository;
+        this.auditService = auditService;
+    }
+
+    /**
+     * Odnotowuje zmianę stanu deklaracji w dzienniku audytowym.
+     */
+    private void auditStatusChange(Declaration declaration, DeclarationStatus previous, String reason) {
+        auditService.recordChange(AuditEntity.DECLARATION, declaration.getId(),
+                declaration.getDebtorId(), AuditOperation.DECLARATION_STATUS, "Stan deklaracji",
+                previous != null ? previous.getDisplayName() : null,
+                declaration.getStatus().getDisplayName(), reason);
     }
 
     /**
@@ -106,9 +128,11 @@ public class DeclarationService {
                 throw new IllegalArgumentException(
                         "Deklaracja została anulowana — nie można zarejestrować do niej wpłaty.");
             }
+            DeclarationStatus previous = d.getStatus();
             d.setStatus(DeclarationStatus.FULFILLED);
             d.setPaymentDate(paymentDate != null ? paymentDate : LocalDate.now());
             update(d);
+            auditStatusChange(d, previous, null);
         });
     }
 
@@ -117,9 +141,11 @@ public class DeclarationService {
      */
     public void markAsBroken(long declarationId, String reason) {
         findById(declarationId).ifPresent(d -> {
+            DeclarationStatus previous = d.getStatus();
             d.setStatus(DeclarationStatus.BROKEN);
             d.setBrokenReason(reason);
             update(d);
+            auditStatusChange(d, previous, reason);
         });
     }
 
@@ -140,9 +166,11 @@ public class DeclarationService {
                 throw new IllegalArgumentException(
                         "Nie można anulować deklaracji, do której zarejestrowano wpłatę.");
             }
+            DeclarationStatus previous = d.getStatus();
             d.setStatus(DeclarationStatus.CANCELLED);
             d.setCancelledReason(reason);
             update(d);
+            auditStatusChange(d, previous, reason);
         });
     }
 

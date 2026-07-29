@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.model.AuditEntity;
+import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Debtor;
 import com.collectorstools.repository.DebtorRepository;
 import com.collectorstools.util.PeselValidator;
@@ -12,15 +14,26 @@ public class DebtorService {
 
     private final DebtorRepository debtorRepository;
     private final DebtorAuditService auditService;
+    private final AuditService auditLog;
 
     public DebtorService() {
         this.debtorRepository = new DebtorRepository();
         this.auditService = new DebtorAuditService();
+        this.auditLog = new AuditService();
     }
 
+    /**
+     * Konstruktor bez dziennika audytowego — używany przez testy, które go nie weryfikują.
+     */
     public DebtorService(DebtorRepository debtorRepository, DebtorAuditService auditService) {
+        this(debtorRepository, auditService, AuditService.noOp());
+    }
+
+    public DebtorService(DebtorRepository debtorRepository, DebtorAuditService auditService,
+                         AuditService auditLog) {
         this.debtorRepository = debtorRepository;
         this.auditService = auditService;
+        this.auditLog = auditLog;
     }
 
     public Debtor save(Debtor debtor) {
@@ -43,9 +56,24 @@ public class DebtorService {
         }
     }
 
+    /**
+     * Usuwa dłużnika wraz z całą jego historią (kaskada w bazie).
+     *
+     * <p>Wpis audytowy powstaje przed usunięciem i celowo **nie ma** klucza obcego
+     * do dłużnika — inaczej kaskada skasowałaby również ślad po samym usunięciu,
+     * czyli informację najbardziej potrzebną przy wyjaśnianiu braku danych.
+     */
     public void delete(long id) {
         try {
+            Debtor removed = debtorRepository.findById(id).orElse(null);
             debtorRepository.delete(id);
+
+            if (removed != null) {
+                auditLog.record(AuditEntity.DEBTOR, id, id, AuditOperation.DELETE, "Dłużnik",
+                        removed.getFullName()
+                                + (removed.getPesel() != null ? " (" + removed.getPesel() + ")" : ""),
+                        null, null);
+            }
         } catch (SQLException e) {
             throw new RuntimeException("Błąd usunięcia dłużnika: " + e.getMessage(), e);
         }

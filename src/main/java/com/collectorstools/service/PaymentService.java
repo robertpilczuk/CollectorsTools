@@ -1,6 +1,8 @@
 package com.collectorstools.service;
 
 import com.collectorstools.db.TransactionManager;
+import com.collectorstools.model.AuditEntity;
+import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Debt;
 import com.collectorstools.model.DebtStatus;
 import com.collectorstools.model.Declaration;
@@ -30,22 +32,37 @@ public class PaymentService {
     private final DebtRepository debtRepository;
     private final DeclarationRepository declarationRepository;
     private final TransactionManager transactionManager;
+    private final AuditService auditService;
 
     public PaymentService() {
         this.paymentRepository = new PaymentRepository();
         this.debtRepository = new DebtRepository();
         this.declarationRepository = new DeclarationRepository();
         this.transactionManager = new TransactionManager();
+        this.auditService = new AuditService();
+    }
+
+    /**
+     * Konstruktor bez audytu — używany przez testy, które go nie weryfikują.
+     */
+    public PaymentService(PaymentRepository paymentRepository,
+                          DebtRepository debtRepository,
+                          DeclarationRepository declarationRepository,
+                          TransactionManager transactionManager) {
+        this(paymentRepository, debtRepository, declarationRepository,
+                transactionManager, AuditService.noOp());
     }
 
     public PaymentService(PaymentRepository paymentRepository,
                           DebtRepository debtRepository,
                           DeclarationRepository declarationRepository,
-                          TransactionManager transactionManager) {
+                          TransactionManager transactionManager,
+                          AuditService auditService) {
         this.paymentRepository = paymentRepository;
         this.debtRepository = debtRepository;
         this.declarationRepository = declarationRepository;
         this.transactionManager = transactionManager;
+        this.auditService = auditService;
     }
 
     /**
@@ -73,6 +90,7 @@ public class PaymentService {
 
             allocate(payment, debt);
             payment.setCreatedAt(LocalDate.now());
+            payment.setUserId(CurrentUser.id());
             if (payment.getSource() == null) {
                 payment.setSource(Payment.SOURCE_MANUAL);
             }
@@ -85,6 +103,10 @@ public class PaymentService {
             if (declaration != null) {
                 refreshDeclarationStatus(declaration);
             }
+
+            auditService.record(AuditEntity.PAYMENT, payment.getId(), debt.getDebtorId(),
+                    AuditOperation.PAYMENT_REGISTERED, "Saldo sprawy",
+                    money(remaining), money(debt.getRemainingAmount()), payment.getNote());
             return payment;
         });
     }
@@ -111,6 +133,11 @@ public class PaymentService {
 
             Long declarationId = payment.getDeclarationId();
             paymentRepository.delete(paymentId);
+
+            auditService.record(AuditEntity.PAYMENT, paymentId, debt.getDebtorId(),
+                    AuditOperation.PAYMENT_REVERSED, "Wycofana wpłata",
+                    money(payment.getAmount()) + " zł z " + payment.getPaymentDate(), null,
+                    payment.getNote());
 
             if (declarationId != null) {
                 Optional<Declaration> declaration = declarationRepository.findById(declarationId);
@@ -240,6 +267,7 @@ public class PaymentService {
      * jest w windykacji zjawiskiem codziennym, a powód złamania zostaje zachowany.
      */
     private void refreshDeclarationStatus(Declaration declaration) throws SQLException {
+        DeclarationStatus previousStatus = declaration.getStatus();
         List<Payment> payments = paymentRepository.findByDeclarationId(declaration.getId());
 
         BigDecimal paid = payments.stream()
@@ -261,6 +289,14 @@ public class PaymentService {
             declaration.setPaymentDate(lastPaymentDate);
         }
         declarationRepository.update(declaration);
+
+        // Stan deklaracji zmienia się tu z pominięciem DeclarationService, więc wpis
+        // audytowy musi powstać w tym miejscu — inaczej przejście "Oczekująca →
+        // Dotrzymana" wywołane wpłatą nie zostawiłoby żadnego śladu.
+        auditService.recordChange(AuditEntity.DECLARATION, declaration.getId(),
+                declaration.getDebtorId(), AuditOperation.DECLARATION_STATUS, "Stan deklaracji",
+                previousStatus != null ? previousStatus.getDisplayName() : null,
+                declaration.getStatus().getDisplayName(), null);
     }
 
     /**

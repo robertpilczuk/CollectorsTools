@@ -15,7 +15,10 @@ import javafx.stage.Stage;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class DebtorDetailWindow extends Stage {
@@ -28,6 +31,7 @@ public class DebtorDetailWindow extends Stage {
     private final DebtService debtService = new DebtService();
     private final InteractionService interactionService = new InteractionService();
     private final DebtorAuditService auditService = new DebtorAuditService();
+    private final AuditService auditLog = new AuditService();
     private final PaymentService paymentService = new PaymentService();
 
     // Zakładki
@@ -234,38 +238,89 @@ public class DebtorDetailWindow extends Stage {
 
     // ===== HISTORIA ZMIAN =====
 
+    /**
+     * Jeden wiersz historii — niezależnie od tego, czy pochodzi z dziennika audytowego,
+     * czy ze starszej tabeli zmian danych dłużnika.
+     */
+    private record HistoryRow(LocalDateTime at, String user, String entity, String operation,
+                              String field, String change, String reason, boolean significant) {
+    }
+
+    /**
+     * Historia łączy dwa źródła: dziennik audytowy (operacje na sprawach, deklaracjach
+     * i wpłatach) oraz starszą tabelę zmian pól dłużnika. Dla użytkownika to jedna oś
+     * czasu — rozdzielanie jej według tego, gdzie akurat trafił zapis, byłoby sztuczne.
+     */
     private VBox buildAuditPane() {
-        TableView<DebtorAudit> table = new TableView<>();
+        List<HistoryRow> rows = new ArrayList<>();
 
-        TableColumn<DebtorAudit, String> dateCol = new TableColumn<>("Data");
-        dateCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
-                d.getValue().getChangedAt() != null ? d.getValue().getChangedAt().format(DT_FMT) : "—"));
-        dateCol.setPrefWidth(140);
+        for (AuditEntry entry : auditLog.findByDebtorId(debtor.getId())) {
+            rows.add(new HistoryRow(
+                    entry.getOccurredAt(),
+                    entry.getUserId() != null ? entry.getUserId() : "—",
+                    entry.getEntityType().getDisplayName(),
+                    entry.getOperation().getDisplayName(),
+                    entry.getFieldName() != null ? entry.getFieldName() : "",
+                    entry.describeChange(),
+                    entry.getReason() != null ? entry.getReason() : "",
+                    entry.getOperation().isSignificant()));
+        }
 
-        TableColumn<DebtorAudit, String> fieldCol = new TableColumn<>("Pole");
-        fieldCol.setCellValueFactory(d ->
-                new javafx.beans.property.SimpleStringProperty(d.getValue().getFieldName()));
-        fieldCol.setPrefWidth(130);
+        for (DebtorAudit change : auditService.findByDebtorId(debtor.getId())) {
+            rows.add(new HistoryRow(
+                    change.getChangedAt(),
+                    "—",
+                    AuditEntity.DEBTOR.getDisplayName(),
+                    AuditOperation.UPDATE.getDisplayName(),
+                    change.getFieldName(),
+                    (change.getOldValue() == null || change.getOldValue().isBlank() ? "(puste)" : change.getOldValue())
+                            + " → "
+                            + (change.getNewValue() == null || change.getNewValue().isBlank() ? "(puste)" : change.getNewValue()),
+                    "",
+                    false));
+        }
 
-        TableColumn<DebtorAudit, String> oldCol = new TableColumn<>("Poprzednio");
-        oldCol.setCellValueFactory(d ->
-                new javafx.beans.property.SimpleStringProperty(d.getValue().getOldValue()));
-        oldCol.setPrefWidth(200);
+        rows.sort(Comparator.comparing(HistoryRow::at,
+                Comparator.nullsLast(Comparator.reverseOrder())));
 
-        TableColumn<DebtorAudit, String> newCol = new TableColumn<>("Teraz");
-        newCol.setCellValueFactory(d ->
-                new javafx.beans.property.SimpleStringProperty(d.getValue().getNewValue()));
-        newCol.setPrefWidth(200);
+        TableView<HistoryRow> table = new TableView<>();
 
-        table.getColumns().addAll(List.of(dateCol, fieldCol, oldCol, newCol));
+        table.getColumns().addAll(List.of(
+                historyColumn("Data", 130, row -> row.at() != null ? row.at().format(DT_FMT) : "—"),
+                historyColumn("Kto", 90, HistoryRow::user),
+                historyColumn("Obiekt", 90, HistoryRow::entity),
+                historyColumn("Operacja", 150, HistoryRow::operation),
+                historyColumn("Pole", 120, HistoryRow::field),
+                historyColumn("Zmiana", 200, HistoryRow::change),
+                historyColumn("Uzasadnienie", 200, HistoryRow::reason)));
+
+        // Operacje finansowe i decyzje o stanie sprawy muszą rzucać się w oczy
+        table.setRowFactory(view -> new TableRow<>() {
+            @Override
+            protected void updateItem(HistoryRow item, boolean empty) {
+                super.updateItem(item, empty);
+                setStyle(!empty && item != null && item.significant()
+                        ? "-fx-font-weight: bold;" : "");
+            }
+        });
+
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.setPlaceholder(new Label("Brak zarejestrowanych zmian."));
-        table.setItems(FXCollections.observableArrayList(auditService.findByDebtorId(debtor.getId())));
+        table.setItems(FXCollections.observableArrayList(rows));
 
         VBox box = new VBox(table);
         VBox.setVgrow(table, Priority.ALWAYS);
         box.setPadding(new Insets(10));
         return box;
+    }
+
+    private TableColumn<HistoryRow, String> historyColumn(String title, double width,
+                                                          java.util.function.Function<HistoryRow, String> getter) {
+        TableColumn<HistoryRow, String> column = new TableColumn<>(title);
+        column.setCellValueFactory(row ->
+                new javafx.beans.property.SimpleStringProperty(getter.apply(row.getValue())));
+        column.setPrefWidth(width);
+        return column;
     }
 
     // ===== DEKLARACJE =====

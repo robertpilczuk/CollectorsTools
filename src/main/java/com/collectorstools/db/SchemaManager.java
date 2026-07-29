@@ -43,7 +43,8 @@ public class SchemaManager {
             "V2__declaration_statuses.sql",
             "V3__debt_details_and_phones.sql",
             "V4__payments.sql",
-            "V5__debt_status.sql"
+            "V5__debt_status.sql",
+            "V6__audit_log.sql"
     };
 
     private final Connection conn;
