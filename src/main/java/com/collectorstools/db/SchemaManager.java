@@ -40,7 +40,9 @@ public class SchemaManager {
      */
     private static final String[] MIGRATIONS = {
             "V1__baseline.sql",
-            "V2__declaration_statuses.sql"
+            "V2__declaration_statuses.sql",
+            "V3__debt_details_and_phones.sql",
+            "V4__payments.sql"
     };
 
     private final Connection conn;
@@ -58,11 +60,61 @@ public class SchemaManager {
             applyLegacyFixes();
 
             int version = currentVersion();
-            for (int i = version; i < MIGRATIONS.length; i++) {
-                applyMigration(MIGRATIONS[i], i + 1);
+            if (version >= MIGRATIONS.length) {
+                return;
+            }
+
+            // Klucze obce muszą być wyłączone na czas migracji. Migracje przebudowujące
+            // tabelę (nowa tabela → przepisanie danych → DROP starej → RENAME) natrafiają
+            // na zachowanie SQLite, w którym DROP TABLE wykonuje niejawne DELETE FROM
+            // i URUCHAMIA akcje ON DELETE tabel zależnych. Przy włączonych kluczach
+            // usunięcie tabeli debts wyzerowałoby debt_id we wszystkich deklaracjach.
+            //
+            // PRAGMA foreign_keys jest ignorowana wewnątrz transakcji, więc przełączenie
+            // musi nastąpić przed jej rozpoczęciem. Spójność sprawdzamy przed commitem
+            // przez PRAGMA foreign_key_check.
+            boolean foreignKeysWereOn = foreignKeysEnabled();
+            if (foreignKeysWereOn) {
+                setForeignKeys(false);
+            }
+            try {
+                for (int i = version; i < MIGRATIONS.length; i++) {
+                    applyMigration(MIGRATIONS[i], i + 1);
+                }
+            } finally {
+                if (foreignKeysWereOn) {
+                    setForeignKeys(true);
+                }
             }
         } catch (SQLException | IOException e) {
             throw new RuntimeException("Błąd migracji schematu bazy: " + e.getMessage(), e);
+        }
+    }
+
+    private boolean foreignKeysEnabled() throws SQLException {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA foreign_keys")) {
+            return rs.next() && rs.getInt(1) == 1;
+        }
+    }
+
+    private void setForeignKeys(boolean enabled) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            st.execute("PRAGMA foreign_keys = " + (enabled ? "ON" : "OFF"));
+        }
+    }
+
+    /**
+     * Weryfikuje, czy migracja nie zostawiła osieroconych powiązań. Wywoływane
+     * przed commitem — naruszenie cofa całą migrację.
+     */
+    private void verifyForeignKeys(String fileName) throws SQLException {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA foreign_key_check")) {
+            if (rs.next()) {
+                throw new SQLException("Migracja " + fileName
+                        + " naruszyła spójność kluczy obcych (tabela: " + rs.getString(1) + ")");
+            }
         }
     }
 
@@ -92,6 +144,7 @@ public class SchemaManager {
             for (String sql : statements) {
                 st.execute(sql);
             }
+            verifyForeignKeys(fileName);
             // user_version jest częścią nagłówka pliku bazy — zmiana jest transakcyjna
             st.execute("PRAGMA user_version = " + targetVersion);
             conn.commit();

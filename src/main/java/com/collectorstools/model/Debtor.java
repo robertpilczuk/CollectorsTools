@@ -19,7 +19,7 @@ public class Debtor {
     private String pesel;
     private String idNumber;       // Nr dowodu osobistego (opcjonalnie)
 
-    // Kontakt
+    // Kontakt — phone jest numerem podstawowym, pełna lista w tabeli debtor_phones
     private String phone;
     private String email;
 
@@ -27,6 +27,12 @@ public class Debtor {
     private String street;
     private String city;
     private String postalCode;
+    private String secondaryAddress;  // Adres korespondencyjny/dodatkowy
+
+    // Zatrudnienie — istotne przy wizycie terenowej i przy egzekucji z wynagrodzenia
+    private String employerName;
+    private String employerAddress;
+    private String employerPhone;
 
     // Notatki ogólne
     private String notes;

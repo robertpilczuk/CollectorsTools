@@ -23,21 +23,12 @@ public class DebtorRepository {
     public Debtor save(Debtor debtor) throws SQLException {
         String sql = """
             INSERT INTO debtors (first_name, last_name, pesel, id_number, phone, email,
-                                 street, city, postal_code, notes, urgent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 street, city, postal_code, secondary_address,
+                                 employer_name, employer_address, employer_phone, notes, urgent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, debtor.getFirstName());
-            ps.setString(2, debtor.getLastName());
-            ps.setString(3, debtor.getPesel());
-            ps.setString(4, debtor.getIdNumber());
-            ps.setString(5, debtor.getPhone());
-            ps.setString(6, debtor.getEmail());
-            ps.setString(7, debtor.getStreet());
-            ps.setString(8, debtor.getCity());
-            ps.setString(9, debtor.getPostalCode());
-            ps.setString(10, debtor.getNotes());
-            ps.setInt(11, debtor.isUrgent() ? 1 : 0);
+            bindCommon(ps, debtor, 1);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) debtor.setId(keys.getLong(1));
@@ -49,24 +40,41 @@ public class DebtorRepository {
     public void update(Debtor debtor) throws SQLException {
         String sql = """
             UPDATE debtors SET first_name=?, last_name=?, pesel=?, id_number=?, phone=?,
-                               email=?, street=?, city=?, postal_code=?, notes=?, urgent=?
+                               email=?, street=?, city=?, postal_code=?, secondary_address=?,
+                               employer_name=?, employer_address=?, employer_phone=?,
+                               notes=?, urgent=?
             WHERE id=?
         """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, debtor.getFirstName());
-            ps.setString(2, debtor.getLastName());
-            ps.setString(3, debtor.getPesel());
-            ps.setString(4, debtor.getIdNumber());
-            ps.setString(5, debtor.getPhone());
-            ps.setString(6, debtor.getEmail());
-            ps.setString(7, debtor.getStreet());
-            ps.setString(8, debtor.getCity());
-            ps.setString(9, debtor.getPostalCode());
-            ps.setString(10, debtor.getNotes());
-            ps.setInt(11, debtor.isUrgent() ? 1 : 0);
-            ps.setLong(12, debtor.getId());
+            int next = bindCommon(ps, debtor, 1);
+            ps.setLong(next, debtor.getId());
             ps.executeUpdate();
         }
+    }
+
+    /**
+     * Ustawia wszystkie pola dłużnika poza identyfikatorem, począwszy od podanej pozycji.
+     *
+     * @return numer kolejnej wolnej pozycji
+     */
+    private int bindCommon(PreparedStatement ps, Debtor debtor, int from) throws SQLException {
+        int i = from;
+        ps.setString(i++, debtor.getFirstName());
+        ps.setString(i++, debtor.getLastName());
+        ps.setString(i++, debtor.getPesel());
+        ps.setString(i++, debtor.getIdNumber());
+        ps.setString(i++, debtor.getPhone());
+        ps.setString(i++, debtor.getEmail());
+        ps.setString(i++, debtor.getStreet());
+        ps.setString(i++, debtor.getCity());
+        ps.setString(i++, debtor.getPostalCode());
+        ps.setString(i++, debtor.getSecondaryAddress());
+        ps.setString(i++, debtor.getEmployerName());
+        ps.setString(i++, debtor.getEmployerAddress());
+        ps.setString(i++, debtor.getEmployerPhone());
+        ps.setString(i++, debtor.getNotes());
+        ps.setInt(i++, debtor.isUrgent() ? 1 : 0);
+        return i;
     }
 
     public void delete(long id) throws SQLException {
@@ -129,6 +137,10 @@ public class DebtorRepository {
                 .firstName(rs.getString("first_name"))
                 .lastName(rs.getString("last_name"))
                 .pesel(rs.getString("pesel"))
+                .secondaryAddress(rs.getString("secondary_address"))
+                .employerName(rs.getString("employer_name"))
+                .employerAddress(rs.getString("employer_address"))
+                .employerPhone(rs.getString("employer_phone"))
                 .idNumber(rs.getString("id_number"))
                 .phone(rs.getString("phone"))
                 .email(rs.getString("email"))

@@ -85,6 +85,9 @@ public class DebtService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    /** Dopuszczalna różnica przy porównywaniu składników salda — jeden grosz. */
+    private static final BigDecimal AMOUNT_TOLERANCE = new BigDecimal("0.01");
+
     private void validate(Debt debt) {
         if (debt.getCaseNumber() == null || debt.getCaseNumber().isBlank())
             throw new IllegalArgumentException("Numer sprawy jest wymagany.");
@@ -94,5 +97,48 @@ public class DebtService {
             throw new IllegalArgumentException("Kwota długu musi być większa od zera.");
         if (debt.getRemainingAmount() == null || debt.getRemainingAmount().compareTo(BigDecimal.ZERO) < 0)
             throw new IllegalArgumentException("Pozostała kwota nie może być ujemna.");
+
+        validateNotNegative(debt.getPrincipalAmount(), "Kapitał");
+        validateNotNegative(debt.getInterestAmount(), "Odsetki");
+        validateNotNegative(debt.getCostAmount(), "Koszty");
+        validateComponentsMatchBalance(debt);
+    }
+
+    private void validateNotNegative(BigDecimal value, String label) {
+        if (value != null && value.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException(label + " nie może być ujemny.");
+        }
+    }
+
+    /**
+     * Saldo musi odpowiadać sumie kapitału, odsetek i kosztów.
+     *
+     * <p>Niezmiennik potwierdzony na eksporcie wierzyciela — zgadzał się co do grosza
+     * we wszystkich 171 sprawach. Sprawdzenie porównuje z tolerancją grosza, bo kwoty
+     * przychodzą z arkuszy jako liczby zmiennoprzecinkowe.
+     *
+     * <p>Sprawa wprowadzona ręcznie może nie mieć rozbicia salda — wtedy reguła nie
+     * ma zastosowania. Weryfikujemy tylko, gdy podano choć jeden składnik, żeby nie
+     * blokować pracy windykatorowi, który zna wyłącznie kwotę łączną.
+     */
+    private void validateComponentsMatchBalance(Debt debt) {
+        boolean anyProvided = debt.getPrincipalAmount() != null
+                || debt.getInterestAmount() != null
+                || debt.getCostAmount() != null;
+        if (!anyProvided) {
+            return;
+        }
+
+        BigDecimal difference = debt.getComponentsSum().subtract(debt.getRemainingAmount()).abs();
+        if (difference.compareTo(AMOUNT_TOLERANCE) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Rozbicie salda nie zgadza się z kwotą pozostałą: %s + %s + %s = %s, oczekiwano %s.",
+                    orZero(debt.getPrincipalAmount()), orZero(debt.getInterestAmount()),
+                    orZero(debt.getCostAmount()), debt.getComponentsSum(), debt.getRemainingAmount()));
+        }
+    }
+
+    private static BigDecimal orZero(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 }

@@ -7,6 +7,7 @@ import com.collectorstools.service.DebtService;
 import com.collectorstools.service.DebtorService;
 import com.collectorstools.service.DeclarationService;
 import com.collectorstools.service.InteractionService;
+import com.collectorstools.service.PaymentService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -43,6 +44,7 @@ public class MainWindow {
     private final DebtService debtService = new DebtService();
     private final DeclarationService declarationService = new DeclarationService();
     private final InteractionService interactionService = new InteractionService();
+    private final PaymentService paymentService = new PaymentService();
 
     private final BorderPane root = new BorderPane();
     private final TableView<Debtor> debtorTable = new TableView<>();
@@ -53,6 +55,7 @@ public class MainWindow {
 
     private final Label debtorsStat = new Label();
     private final Label remainingStat = new Label();
+    private final Label recoveredStat = new Label();
     private final Label pendingStat = new Label();
     private final Label keptStat = new Label();
 
@@ -117,10 +120,10 @@ public class MainWindow {
     }
 
     private HBox buildStatsBar() {
-        for (Label l : new Label[]{debtorsStat, remainingStat, pendingStat, keptStat}) {
+        for (Label l : new Label[]{debtorsStat, remainingStat, recoveredStat, pendingStat, keptStat}) {
             l.getStyleClass().add("stat-label");
         }
-        HBox bar = new HBox(24, debtorsStat, remainingStat, pendingStat, keptStat);
+        HBox bar = new HBox(24, debtorsStat, remainingStat, recoveredStat, pendingStat, keptStat);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(8, 16, 8, 16));
         bar.getStyleClass().add("stats-bar");
@@ -143,6 +146,7 @@ public class MainWindow {
 
         debtorsStat.setText("Dłużnicy: " + debtors);
         remainingStat.setText(String.format("Suma długów: %,.2f PLN", remaining));
+        recoveredStat.setText(String.format("Odzyskano: %,.2f PLN", paymentService.sumAll()));
         pendingStat.setText("Oczekujące deklaracje: " + pending
                 + (partial > 0 ? "  (częściowe: " + partial + ")" : ""));
         keptStat.setText(String.format("Dotrzymane deklaracje: %.0f%%", keptPct));

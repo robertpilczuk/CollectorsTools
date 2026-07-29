@@ -83,16 +83,26 @@ class SchemaManagerTest {
     @Test
     @DisplayName("Baza sprzed wersjonowania dostaje brakującą kolumnę urgent")
     void legacyDatabaseGetsMissingUrgentColumn() throws SQLException {
-        // Odtworzenie starej tabeli — bez kolumny urgent i bez user_version
+        // Odtworzenie schematu sprzed wprowadzenia kolumny urgent i wersjonowania —
+        // pozostałe kolumny są takie jak w pierwszym wydaniu aplikacji.
         try (Statement st = conn.createStatement()) {
             st.execute("""
                 CREATE TABLE debtors (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    first_name TEXT NOT NULL,
-                    last_name  TEXT NOT NULL
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    first_name  TEXT NOT NULL,
+                    last_name   TEXT NOT NULL,
+                    pesel       TEXT,
+                    id_number   TEXT,
+                    phone       TEXT,
+                    email       TEXT,
+                    street      TEXT,
+                    city        TEXT,
+                    postal_code TEXT,
+                    notes       TEXT
                 )
             """);
-            st.executeUpdate("INSERT INTO debtors (first_name, last_name) VALUES ('Anna', 'Nowak')");
+            st.executeUpdate(
+                    "INSERT INTO debtors (first_name, last_name, phone) VALUES ('Anna', 'Nowak', '600100200')");
         }
         assertFalse(columnExists("debtors", "urgent"), "Warunek początkowy: kolumny jeszcze nie ma");
 

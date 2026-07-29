@@ -14,6 +14,7 @@ import javafx.stage.Stage;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -27,11 +28,13 @@ public class DebtorDetailWindow extends Stage {
     private final DebtService debtService = new DebtService();
     private final InteractionService interactionService = new InteractionService();
     private final DebtorAuditService auditService = new DebtorAuditService();
+    private final PaymentService paymentService = new PaymentService();
 
     // Zakładki
     private final TableView<Declaration> declarationTable = new TableView<>();
     private final TableView<Debt> debtTable = new TableView<>();
     private final TableView<Interaction> interactionTable = new TableView<>();
+    private final TableView<Payment> paymentTable = new TableView<>();
 
     public DebtorDetailWindow(Debtor debtor) {
         this.debtor = debtor;
@@ -66,10 +69,14 @@ public class DebtorDetailWindow extends Stage {
         int contactCount = interactionService.countByDebtorId(debtor.getId());
         BigDecimal totalRemaining = debtService.getTotalRemainingForDebtor(debtor.getId());
 
+        BigDecimal totalPaid = paymentService.sumByDebtorId(debtor.getId());
+
         HBox stats = new HBox(24,
                 statBox("Złamane deklaracje", brokenCount > 0 ? "⚠ " + brokenCount : "0", brokenCount > 0 ? "stat-danger" : "stat-ok"),
                 statBox("Liczba kontaktów", String.valueOf(contactCount), "stat-neutral"),
-                statBox("Pozostały dług", totalRemaining.toPlainString() + " PLN", "stat-neutral")
+                statBox("Pozostały dług", money(totalRemaining) + " PLN", "stat-neutral"),
+                statBox("Odzyskano", money(totalPaid) + " PLN",
+                        totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "stat-ok" : "stat-neutral")
         );
         stats.getStyleClass().add("stats-bar");
 
@@ -137,18 +144,92 @@ public class DebtorDetailWindow extends Stage {
 
     private TabPane buildTabs() {
         Tab declarationsTab  = new Tab("Deklaracje",   buildDeclarationsPane());
+        Tab paymentsTab      = new Tab("Wpłaty",       buildPaymentsPane());
         Tab debtsTab         = new Tab("Sprawy/Długi", buildDebtsPane());
         Tab interactionsTab  = new Tab("Historia kontaktów", buildInteractionsPane());
         Tab auditTab         = new Tab("Historia zmian", buildAuditPane());
 
         declarationsTab.setClosable(false);
+        paymentsTab.setClosable(false);
         debtsTab.setClosable(false);
         interactionsTab.setClosable(false);
         auditTab.setClosable(false);
 
-        TabPane tabs = new TabPane(declarationsTab, debtsTab, interactionsTab, auditTab);
+        TabPane tabs = new TabPane(declarationsTab, paymentsTab, debtsTab, interactionsTab, auditTab);
         tabs.getStyleClass().add("detail-tabs");
         return tabs;
+    }
+
+    // ===== WPŁATY =====
+
+    @SuppressWarnings("unchecked")
+    private VBox buildPaymentsPane() {
+        TableColumn<Payment, String> dateCol = new TableColumn<>("Data wpłaty");
+        dateCol.setCellValueFactory(p -> new javafx.beans.property.SimpleStringProperty(
+                p.getValue().getPaymentDate().format(FMT)));
+        dateCol.setPrefWidth(110);
+
+        TableColumn<Payment, String> amountCol = new TableColumn<>("Kwota");
+        amountCol.setCellValueFactory(p -> new javafx.beans.property.SimpleStringProperty(
+                money(p.getValue().getAmount()) + " zł"));
+        amountCol.setPrefWidth(110);
+        amountCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+
+        TableColumn<Payment, String> caseCol = new TableColumn<>("Sprawa");
+        caseCol.setCellValueFactory(p -> new javafx.beans.property.SimpleStringProperty(
+                debtService.findById(p.getValue().getDebtId())
+                        .map(Debt::getCaseNumber).orElse("—")));
+        caseCol.setPrefWidth(130);
+
+        // Rozbicie pokazuje, na co poszła wpłata — kolejność zaliczania z art. 451 KC
+        TableColumn<Payment, String> allocationCol = new TableColumn<>("Zaliczono (K / O / Kap.)");
+        allocationCol.setCellValueFactory(p -> {
+            Payment payment = p.getValue();
+            if (payment.getAllocatedCost() == null) {
+                return new javafx.beans.property.SimpleStringProperty("—");
+            }
+            return new javafx.beans.property.SimpleStringProperty(
+                    money(payment.getAllocatedCost()) + " / "
+                            + money(payment.getAllocatedInterest()) + " / "
+                            + money(payment.getAllocatedPrincipal()));
+        });
+        allocationCol.setPrefWidth(190);
+
+        TableColumn<Payment, String> noteCol = new TableColumn<>("Notatka");
+        noteCol.setCellValueFactory(p -> new javafx.beans.property.SimpleStringProperty(
+                p.getValue().getNote() != null ? p.getValue().getNote() : ""));
+
+        TableColumn<Payment, Void> actionsCol = new TableColumn<>("Akcje");
+        actionsCol.setPrefWidth(110);
+        actionsCol.setCellFactory(col -> new TableCell<>() {
+            final Button reverseBtn = new Button("Wycofaj");
+            {
+                reverseBtn.getStyleClass().addAll("btn-danger", "btn-sm");
+                reverseBtn.setOnAction(e -> reversePayment(getTableView().getItems().get(getIndex())));
+            }
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : reverseBtn);
+            }
+        });
+
+        paymentTable.getColumns().addAll(dateCol, amountCol, caseCol, allocationCol, noteCol, actionsCol);
+        paymentTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        paymentTable.setPlaceholder(new Label("Brak zarejestrowanych wpłat."));
+        loadPayments();
+
+        Button addBtn = new Button("+ Zarejestruj wpłatę");
+        addBtn.getStyleClass().add("btn-primary");
+        addBtn.setOnAction(e -> openPaymentForm(null));
+
+        HBox toolbar = new HBox(addBtn);
+        toolbar.setPadding(new Insets(8, 0, 8, 0));
+
+        VBox pane = new VBox(toolbar, paymentTable);
+        VBox.setVgrow(paymentTable, Priority.ALWAYS);
+        pane.setPadding(new Insets(8));
+        return pane;
     }
 
     // ===== HISTORIA ZMIAN =====
@@ -308,13 +389,25 @@ public class DebtorDetailWindow extends Stage {
 
         TableColumn<Debt, String> totalCol = new TableColumn<>("Kwota całk.");
         totalCol.setCellValueFactory(d ->
-                new javafx.beans.property.SimpleStringProperty(d.getValue().getTotalAmount().toPlainString() + " PLN"));
-        totalCol.setPrefWidth(120);
+                new javafx.beans.property.SimpleStringProperty(money(d.getValue().getTotalAmount()) + " zł"));
+        totalCol.setPrefWidth(110);
+        totalCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+
+        TableColumn<Debt, String> paidCol = new TableColumn<>("Wpłacono");
+        paidCol.setCellValueFactory(d -> {
+            BigDecimal paid = paymentService.findByDebtId(d.getValue().getId()).stream()
+                    .map(Payment::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            return new javafx.beans.property.SimpleStringProperty(money(paid) + " zł");
+        });
+        paidCol.setPrefWidth(110);
+        paidCol.setStyle("-fx-alignment: CENTER-RIGHT;");
 
         TableColumn<Debt, String> remainingCol = new TableColumn<>("Pozostało");
         remainingCol.setCellValueFactory(d ->
-                new javafx.beans.property.SimpleStringProperty(d.getValue().getRemainingAmount().toPlainString() + " PLN"));
-        remainingCol.setPrefWidth(120);
+                new javafx.beans.property.SimpleStringProperty(money(d.getValue().getRemainingAmount()) + " zł"));
+        remainingCol.setPrefWidth(110);
+        remainingCol.setStyle("-fx-alignment: CENTER-RIGHT;");
 
         TableColumn<Debt, String> descCol = new TableColumn<>("Opis");
         descCol.setCellValueFactory(d ->
@@ -340,7 +433,7 @@ public class DebtorDetailWindow extends Stage {
             }
         });
 
-        debtTable.getColumns().addAll(caseCol, creditorCol, totalCol, remainingCol, descCol, actionsCol);
+        debtTable.getColumns().addAll(caseCol, creditorCol, totalCol, paidCol, remainingCol, descCol, actionsCol);
         debtTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         debtTable.setPlaceholder(new Label("Brak spraw."));
         loadDebts();
@@ -430,6 +523,17 @@ public class DebtorDetailWindow extends Stage {
         interactionTable.setItems(FXCollections.observableArrayList(list));
     }
 
+    private void loadPayments() {
+        List<Payment> list = paymentService.findByDebtorId(debtor.getId());
+        paymentTable.setItems(FXCollections.observableArrayList(list));
+    }
+
+    /** Kwota w zapisie polskim: dwa miejsca po przecinku, przecinek dziesiętny. */
+    private static String money(BigDecimal value) {
+        BigDecimal amount = value != null ? value : BigDecimal.ZERO;
+        return amount.setScale(2, RoundingMode.HALF_UP).toPlainString().replace('.', ',');
+    }
+
     // ===== AKCJE — DEKLARACJE =====
 
     private void openDeclarationForm() {
@@ -441,8 +545,64 @@ public class DebtorDetailWindow extends Stage {
         });
     }
 
+    /**
+     * Oznaczenie deklaracji jako dotrzymanej przechodzi przez rejestrację wpłaty —
+     * status wynika z faktycznie zaksięgowanej kwoty, a nie z samej deklaracji
+     * windykatora. Dzięki temu saldo sprawy i stan deklaracji nie mogą się rozjechać.
+     */
     private void markFulfilled(Declaration d) {
-        declarationService.markAsFulfilled(d.getId(), null);
+        openPaymentForm(d);
+    }
+
+    private void openPaymentForm(Declaration declaration) {
+        List<Debt> debts = debtService.findByDebtorId(debtor.getId());
+        if (debts.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Brak sprawy",
+                    "Wpłatę można zarejestrować tylko na poczet sprawy.\n"
+                            + "Dodaj najpierw sprawę w zakładce \"Sprawy/Długi\".");
+            return;
+        }
+
+        BigDecimal alreadyPaid = declaration != null
+                ? paymentService.sumByDeclarationId(declaration.getId()) : BigDecimal.ZERO;
+
+        new PaymentFormDialog(debts, declaration, alreadyPaid).showAndWait().ifPresent(payment -> {
+            try {
+                paymentService.registerPayment(payment);
+                refreshAfterPayment();
+            } catch (IllegalArgumentException ex) {
+                showAlert(Alert.AlertType.WARNING, "Nie zarejestrowano wpłaty", ex.getMessage());
+            }
+        });
+    }
+
+    private void reversePayment(Payment payment) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Wycofać wpłatę " + money(payment.getAmount()) + " zł z dnia "
+                        + payment.getPaymentDate().format(FMT) + "?\n\n"
+                        + "Saldo sprawy wróci do stanu sprzed wpłaty, a powiązana deklaracja\n"
+                        + "zostanie przeliczona na nowo.",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("Wycofanie wpłaty");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(button -> {
+            if (button == ButtonType.OK) {
+                try {
+                    paymentService.reversePayment(payment.getId());
+                    refreshAfterPayment();
+                } catch (IllegalArgumentException ex) {
+                    showAlert(Alert.AlertType.WARNING, "Nie wycofano wpłaty", ex.getMessage());
+                }
+            }
+        });
+    }
+
+    /**
+     * Wpłata dotyka trzech widoków naraz: listy wpłat, salda sprawy i stanu deklaracji.
+     */
+    private void refreshAfterPayment() {
+        loadPayments();
+        loadDebts();
         loadDeclarations();
     }
 

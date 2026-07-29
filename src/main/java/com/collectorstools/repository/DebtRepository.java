@@ -24,19 +24,19 @@ public class DebtRepository {
         this.conn = conn;
     }
 
-    public Debt save(Debt debt) throws SQLException {
-        String sql = """
-            INSERT INTO debts (debtor_id, case_number, creditor, total_amount, remaining_amount, debt_date, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+    private static final String COLUMNS = """
+            debtor_id, case_number, creditor, original_creditor, portfolio, product, bank_account,
+            total_amount, remaining_amount, principal_amount, interest_amount, cost_amount,
+            case_category, credit_status, settlement_allowed, court, court_signature,
+            debt_date, service_start_date, enforcement_start_date, description
         """;
+
+    public Debt save(Debt debt) throws SQLException {
+        String sql = "INSERT INTO debts (" + COLUMNS + ") VALUES ("
+                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setLong(1, debt.getDebtorId());
-            ps.setString(2, debt.getCaseNumber());
-            ps.setString(3, debt.getCreditor());
-            ps.setBigDecimal(4, debt.getTotalAmount());
-            ps.setBigDecimal(5, debt.getRemainingAmount());
-            ps.setString(6, debt.getDebtDate() != null ? debt.getDebtDate().toString() : null);
-            ps.setString(7, debt.getDescription());
+            bindCommon(ps, debt, 2);
             ps.executeUpdate();
             try (ResultSet keys = ps.getGeneratedKeys()) {
                 if (keys.next()) debt.setId(keys.getLong(1));
@@ -47,20 +47,61 @@ public class DebtRepository {
 
     public void update(Debt debt) throws SQLException {
         String sql = """
-            UPDATE debts SET case_number=?, creditor=?, total_amount=?, remaining_amount=?,
-                             debt_date=?, description=?
+            UPDATE debts SET case_number=?, creditor=?, original_creditor=?, portfolio=?, product=?,
+                             bank_account=?, total_amount=?, remaining_amount=?, principal_amount=?,
+                             interest_amount=?, cost_amount=?, case_category=?, credit_status=?,
+                             settlement_allowed=?, court=?, court_signature=?, debt_date=?,
+                             service_start_date=?, enforcement_start_date=?, description=?
             WHERE id=?
         """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, debt.getCaseNumber());
-            ps.setString(2, debt.getCreditor());
-            ps.setBigDecimal(3, debt.getTotalAmount());
-            ps.setBigDecimal(4, debt.getRemainingAmount());
-            ps.setString(5, debt.getDebtDate() != null ? debt.getDebtDate().toString() : null);
-            ps.setString(6, debt.getDescription());
-            ps.setLong(7, debt.getId());
+            int next = bindCommon(ps, debt, 1);
+            ps.setLong(next, debt.getId());
             ps.executeUpdate();
         }
+    }
+
+    /**
+     * Ustawia wszystkie pola sprawy poza identyfikatorami, począwszy od podanej pozycji.
+     *
+     * @return numer kolejnej wolnej pozycji
+     */
+    private int bindCommon(PreparedStatement ps, Debt debt, int from) throws SQLException {
+        int i = from;
+        ps.setString(i++, debt.getCaseNumber());
+        ps.setString(i++, debt.getCreditor());
+        ps.setString(i++, debt.getOriginalCreditor());
+        ps.setString(i++, debt.getPortfolio());
+        ps.setString(i++, debt.getProduct());
+        ps.setString(i++, debt.getBankAccount());
+        ps.setBigDecimal(i++, debt.getTotalAmount());
+        ps.setBigDecimal(i++, debt.getRemainingAmount());
+        ps.setBigDecimal(i++, zeroIfNull(debt.getPrincipalAmount()));
+        ps.setBigDecimal(i++, zeroIfNull(debt.getInterestAmount()));
+        ps.setBigDecimal(i++, zeroIfNull(debt.getCostAmount()));
+        ps.setString(i++, debt.getCaseCategory());
+        ps.setString(i++, debt.getCreditStatus());
+        setNullableBoolean(ps, i++, debt.getSettlementAllowed());
+        ps.setString(i++, debt.getCourt());
+        ps.setString(i++, debt.getCourtSignature());
+        ps.setString(i++, dateOrNull(debt.getDebtDate()));
+        ps.setString(i++, dateOrNull(debt.getServiceStartDate()));
+        ps.setString(i++, dateOrNull(debt.getEnforcementStartDate()));
+        ps.setString(i++, debt.getDescription());
+        return i;
+    }
+
+    private static BigDecimal zeroIfNull(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private static String dateOrNull(LocalDate date) {
+        return date != null ? date.toString() : null;
+    }
+
+    private static void setNullableBoolean(PreparedStatement ps, int index, Boolean value) throws SQLException {
+        if (value == null) ps.setNull(index, Types.INTEGER);
+        else ps.setInt(index, value ? 1 : 0);
     }
 
     public void delete(long id) throws SQLException {
@@ -111,16 +152,36 @@ public class DebtRepository {
     }
 
     private Debt map(ResultSet rs) throws SQLException {
-        String dateStr = rs.getString("debt_date");
+        int settlement = rs.getInt("settlement_allowed");
+        Boolean settlementAllowed = rs.wasNull() ? null : settlement == 1;
+
         return Debt.builder()
                 .id(rs.getLong("id"))
                 .debtorId(rs.getLong("debtor_id"))
                 .caseNumber(rs.getString("case_number"))
                 .creditor(rs.getString("creditor"))
+                .originalCreditor(rs.getString("original_creditor"))
+                .portfolio(rs.getString("portfolio"))
+                .product(rs.getString("product"))
+                .bankAccount(rs.getString("bank_account"))
                 .totalAmount(rs.getBigDecimal("total_amount"))
                 .remainingAmount(rs.getBigDecimal("remaining_amount"))
-                .debtDate(dateStr != null ? LocalDate.parse(dateStr) : null)
+                .principalAmount(rs.getBigDecimal("principal_amount"))
+                .interestAmount(rs.getBigDecimal("interest_amount"))
+                .costAmount(rs.getBigDecimal("cost_amount"))
+                .caseCategory(rs.getString("case_category"))
+                .creditStatus(rs.getString("credit_status"))
+                .settlementAllowed(settlementAllowed)
+                .court(rs.getString("court"))
+                .courtSignature(rs.getString("court_signature"))
+                .debtDate(parseDate(rs.getString("debt_date")))
+                .serviceStartDate(parseDate(rs.getString("service_start_date")))
+                .enforcementStartDate(parseDate(rs.getString("enforcement_start_date")))
                 .description(rs.getString("description"))
                 .build();
+    }
+
+    private static LocalDate parseDate(String value) {
+        return value != null ? LocalDate.parse(value) : null;
     }
 }
