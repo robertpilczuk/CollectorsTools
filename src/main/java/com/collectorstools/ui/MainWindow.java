@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -464,13 +465,60 @@ public class MainWindow {
         alert.showAndWait();
     }
 
+    /**
+     * Usunięcie dłużnika kasuje kaskadowo całą jego historię i nie da się go cofnąć.
+     *
+     * <p>Dialog wylicza, co konkretnie przepadnie — łącznie z kwotą zarejestrowanych
+     * wpłat — i wymaga przepisania nazwiska. Ochrona przed kliknięciem "OK" odruchowo
+     * jest tu ważniejsza niż wygoda: aplikacja nie ma archiwum ani kosza.
+     */
     private void confirmDelete(Debtor debtor) {
-        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Usuń dłużnika");
-        alert.setHeaderText("Czy na pewno usunąć dłużnika?");
-        alert.setContentText(debtor.getFullName() + "\nUsunięcie spowoduje usunięcie wszystkich deklaracji i interakcji.");
-        alert.showAndWait().ifPresent(btn -> {
-            if (btn == ButtonType.OK) {
+        long debtCount = debtService.findByDebtorId(debtor.getId()).size();
+        long declarationCount = declarationService.findByDebtorId(debtor.getId()).size();
+        int contactCount = interactionService.countByDebtorId(debtor.getId());
+        long paymentCount = paymentService.findByDebtorId(debtor.getId()).size();
+        BigDecimal paidTotal = paymentService.sumByDebtorId(debtor.getId());
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Usuń dłużnika");
+        dialog.setHeaderText("Trwałe usunięcie: " + debtor.getFullName());
+
+        ButtonType deleteButton = new ButtonType("Usuń bezpowrotnie", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(deleteButton, ButtonType.CANCEL);
+
+        StringBuilder consequences = new StringBuilder("Zostaną bezpowrotnie usunięte:\n");
+        consequences.append("  • sprawy: ").append(debtCount).append('\n');
+        consequences.append("  • deklaracje: ").append(declarationCount).append('\n');
+        consequences.append("  • kontakty: ").append(contactCount).append('\n');
+        consequences.append("  • wpłaty: ").append(paymentCount);
+        if (paymentCount > 0) {
+            consequences.append(" na łączną kwotę ")
+                    .append(paidTotal.setScale(2, RoundingMode.HALF_UP).toPlainString().replace('.', ','))
+                    .append(" zł");
+        }
+
+        Label consequencesLabel = new Label(consequences.toString());
+        consequencesLabel.setStyle("-fx-text-fill: #e74c3c;");
+
+        Label instruction = new Label("Aby potwierdzić, przepisz nazwisko: " + debtor.getLastName());
+        instruction.setWrapText(true);
+
+        TextField confirmation = new TextField();
+        confirmation.setPromptText(debtor.getLastName());
+
+        VBox content = new VBox(10, consequencesLabel, new Separator(), instruction, confirmation);
+        content.setPadding(new Insets(16));
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setPrefWidth(460);
+        dialog.getDialogPane().setMinWidth(460);
+
+        javafx.scene.Node deleteNode = dialog.getDialogPane().lookupButton(deleteButton);
+        deleteNode.setDisable(true);
+        confirmation.textProperty().addListener((o, old, value) ->
+                deleteNode.setDisable(!debtor.getLastName().equalsIgnoreCase(value.trim())));
+
+        dialog.showAndWait().ifPresent(button -> {
+            if (button == deleteButton) {
                 debtorService.delete(debtor.getId());
                 loadDebtors();
             }

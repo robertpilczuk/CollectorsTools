@@ -66,15 +66,22 @@ public class DebtFormDialog extends Dialog<Debt> {
 
         setResultConverter(btn -> {
             if (btn != saveBtn) return null;
-            return Debt.builder()
-                    .debtorId(debtorId)
-                    .caseNumber(caseNumberField.getText().trim())
-                    .creditor(creditorField.getText().trim())
-                    .totalAmount(parseBigDecimal(totalAmountField.getText()))
-                    .remainingAmount(parseBigDecimal(remainingField.getText()))
-                    .debtDate(debtDatePicker.getValue())
-                    .description(descriptionArea.getText().trim())
-                    .build();
+
+            // Przy edycji nadpisujemy WYŁĄCZNIE pola obecne w formularzu. Zbudowanie
+            // nowego obiektu skasowałoby wszystko, czego formularz nie pokazuje:
+            // rozbicie salda, portfel, produkt, dane sądowe oraz stan zamknięcia sprawy —
+            // zamknięta sprawa cicho wróciłaby do obsługi.
+            Debt result = existing != null
+                    ? existing
+                    : Debt.builder().debtorId(debtorId).build();
+
+            result.setCaseNumber(caseNumberField.getText().trim());
+            result.setCreditor(creditorField.getText().trim());
+            result.setTotalAmount(parseBigDecimal(totalAmountField.getText()));
+            result.setRemainingAmount(parseBigDecimal(remainingField.getText()));
+            result.setDebtDate(debtDatePicker.getValue());
+            result.setDescription(descriptionArea.getText().trim());
+            return result;
         });
     }
 

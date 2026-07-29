@@ -409,31 +409,73 @@ public class DebtorDetailWindow extends Stage {
         remainingCol.setPrefWidth(110);
         remainingCol.setStyle("-fx-alignment: CENTER-RIGHT;");
 
+        TableColumn<Debt, String> statusCol = new TableColumn<>("Stan");
+        statusCol.setCellValueFactory(d -> {
+            Debt debt = d.getValue();
+            String label = debt.getStatus() != null ? debt.getStatus().getDisplayName() : "";
+            return new javafx.beans.property.SimpleStringProperty(label);
+        });
+        statusCol.setPrefWidth(160);
+        statusCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                Debt debt = (getTableRow() == null) ? null : (Debt) getTableRow().getItem();
+                if (empty || item == null || debt == null || debt.getStatus() == null) {
+                    setText(null);
+                    setStyle("");
+                    return;
+                }
+                setText(item);
+                // Przyczyna zamknięcia w podpowiedzi — nie zabiera miejsca w tabeli
+                setTooltip(debt.getCloseReason() != null ? new Tooltip(debt.getCloseReason()) : null);
+                setStyle(switch (debt.getStatus()) {
+                    case ACTIVE            -> "-fx-text-fill: #e67e22;";
+                    case CLOSED_PAID       -> "-fx-text-fill: #27ae60; -fx-font-weight: bold;";
+                    case CLOSED_WRITTEN_OFF,
+                         CLOSED_TIME_BARRED -> "-fx-text-fill: #95a5a6; -fx-font-style: italic;";
+                    case CLOSED_LEGAL      -> "-fx-text-fill: #8e44ad; -fx-font-weight: bold;";
+                });
+            }
+        });
+
         TableColumn<Debt, String> descCol = new TableColumn<>("Opis");
         descCol.setCellValueFactory(d ->
                 new javafx.beans.property.SimpleStringProperty(
                         d.getValue().getDescription() != null ? d.getValue().getDescription() : ""));
 
         TableColumn<Debt, Void> actionsCol = new TableColumn<>("Akcje");
-        actionsCol.setPrefWidth(140);
+        actionsCol.setPrefWidth(240);
         actionsCol.setCellFactory(col -> new TableCell<>() {
             final Button editBtn   = new Button("Edytuj");
+            final Button closeBtn  = new Button("Zamknij");
+            final Button reopenBtn = new Button("Otwórz");
             final Button deleteBtn = new Button("Usuń");
             {
                 editBtn.getStyleClass().add("btn-edit");
+                closeBtn.getStyleClass().addAll("btn-detail", "btn-sm");
+                reopenBtn.getStyleClass().addAll("btn-detail", "btn-sm");
                 deleteBtn.getStyleClass().add("btn-danger");
+
                 editBtn.setOnAction(e -> openDebtForm(getTableView().getItems().get(getIndex())));
+                closeBtn.setOnAction(e -> closeCase(getTableView().getItems().get(getIndex())));
+                reopenBtn.setOnAction(e -> reopenCase(getTableView().getItems().get(getIndex())));
                 deleteBtn.setOnAction(e -> deleteDebt(getTableView().getItems().get(getIndex())));
             }
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
                 if (empty) { setGraphic(null); return; }
-                setGraphic(new HBox(6, editBtn, deleteBtn));
+                Debt debt = getTableView().getItems().get(getIndex());
+                HBox box = new HBox(6, editBtn);
+                box.getChildren().add(debt.isClosed() ? reopenBtn : closeBtn);
+                box.getChildren().add(deleteBtn);
+                setGraphic(box);
             }
         });
 
-        debtTable.getColumns().addAll(caseCol, creditorCol, totalCol, paidCol, remainingCol, descCol, actionsCol);
+        debtTable.getColumns().addAll(caseCol, creditorCol, totalCol, paidCol, remainingCol,
+                statusCol, descCol, actionsCol);
         debtTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         debtTable.setPlaceholder(new Label("Brak spraw."));
         loadDebts();
@@ -662,12 +704,50 @@ public class DebtorDetailWindow extends Stage {
         });
     }
 
+    private void closeCase(Debt debt) {
+        new CaseClosureDialog(debt).showAndWait().ifPresent(result -> {
+            try {
+                debtService.closeCase(debt.getId(), result.status(), result.reason());
+                loadDebts();
+            } catch (IllegalArgumentException ex) {
+                showAlert(Alert.AlertType.WARNING, "Nie zamknięto sprawy", ex.getMessage());
+            }
+        });
+    }
+
+    private void reopenCase(Debt debt) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Przywrócić sprawę " + debt.getCaseNumber() + " do obsługi?\n\n"
+                        + "Data i przyczyna zamknięcia zostaną usunięte.",
+                ButtonType.OK, ButtonType.CANCEL);
+        confirm.setTitle("Ponowne otwarcie sprawy");
+        confirm.setHeaderText(null);
+        confirm.showAndWait().ifPresent(button -> {
+            if (button == ButtonType.OK) {
+                try {
+                    debtService.reopenCase(debt.getId());
+                    loadDebts();
+                } catch (IllegalArgumentException ex) {
+                    showAlert(Alert.AlertType.WARNING, "Nie otwarto sprawy", ex.getMessage());
+                }
+            }
+        });
+    }
+
     private void deleteDebt(Debt d) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
                 "Usunąć sprawę " + d.getCaseNumber() + "?",
                 ButtonType.OK, ButtonType.CANCEL);
         alert.showAndWait().ifPresent(btn -> {
-            if (btn == ButtonType.OK) { debtService.delete(d.getId()); loadDebts(); }
+            if (btn == ButtonType.OK) {
+                try {
+                    debtService.delete(d.getId());
+                    loadDebts();
+                } catch (IllegalArgumentException ex) {
+                    // Sprawa z wpłatami jest nieusuwalna — komunikat wskazuje alternatywę
+                    showAlert(Alert.AlertType.WARNING, "Nie usunięto sprawy", ex.getMessage());
+                }
+            }
         });
     }
 

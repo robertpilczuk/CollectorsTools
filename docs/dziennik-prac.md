@@ -239,6 +239,45 @@ Testy: 100 → 115.
 
 ---
 
+## Etap 5b — interfejs zamykania spraw
+
+**Błąd znaleziony przy przeglądzie ścieżki edycji.** Formularz sprawy budował przy zapisie
+**nowy** obiekt z sześciu widocznych pól. Oznaczało to, że edycja dowolnej sprawy kasowała
+wszystko, czego formularz nie pokazuje: rozbicie salda, portfel, produkt, rachunek, dane
+sądowe, daty obsługi i egzekucji — a od Etapu 5a również **stan zamknięcia**. Zamknięta
+sprawa po zwykłej korekcie opisu cicho wracałaby do obsługi, tracąc datę i przyczynę
+zamknięcia.
+
+Wada powstała w Etapie 4a wraz z dodaniem pól, których formularz nie obejmuje, i pozostawała
+niewidoczna, bo nic wcześniej tych pól nie wypełniało. Poprawka: przy edycji formularz
+nadpisuje **wyłącznie** pola, które sam pokazuje, pracując na istniejącym obiekcie.
+
+Wnioski na przyszłość: dodanie pola do modelu wymaga sprawdzenia każdego miejsca, które
+buduje ten model od zera. Formularze nadpisujące całe encje są w tym wzorcu szczególnie
+podatne.
+
+Zaimplementowane:
+
+- **`CaseClosureDialog`** — wybór stanu końcowego i uzasadnienia. Zamknięcie „spłacona"
+  **znika z listy**, gdy sprawa ma niespłacone saldo, zamiast kończyć się błędem po
+  zatwierdzeniu. Przy dodatnim saldzie uzasadnienie jest wymagane, a przycisk pozostaje
+  nieaktywny do jego wpisania.
+- kolumna **„Stan"** w tabeli spraw, kolorowana wg statusu, z przyczyną zamknięcia
+  w podpowiedzi
+- przyciski **„Zamknij" / „Otwórz"** przełączane zależnie od stanu sprawy
+- obsługa odmowy usunięcia sprawy z wpłatami — komunikat zamiast cichego braku reakcji
+- **dialog usunięcia dłużnika** wyliczający konsekwencje (sprawy, deklaracje, kontakty,
+  wpłaty wraz z kwotą) i wymagający przepisania nazwiska
+
+Ostatnia zmiana wynika wprost z braku archiwum i kosza w aplikacji: usunięcie dłużnika
+kasuje kaskadowo całą historię i nie da się go cofnąć, więc ochrona przed odruchowym
+kliknięciem „OK" jest ważniejsza niż wygoda.
+
+**Nieprzetestowane automatycznie:** logika dialogów nie jest objęta testami — projekt nie
+ma harnessu do testowania JavaFX. Weryfikacja odbywa się przez uruchomienie aplikacji.
+
+---
+
 ## Uwaga do historii commitów
 
 Etapy 4a, 4b i 4c trafiły do **jednego commita** `254a933`, którego opis odnosi się
