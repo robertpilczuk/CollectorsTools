@@ -1,5 +1,6 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.AuditEntity;
 import com.collectorstools.model.AuditEntry;
 import com.collectorstools.model.AuditOperation;
@@ -76,7 +77,7 @@ public class AuditService {
         try {
             auditLogRepository.save(entry);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu dziennika audytowego: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać dziennika audytowego", e);
         }
     }
 
@@ -108,7 +109,7 @@ public class AuditService {
         try {
             return auditLogRepository.findByEntity(type, entityId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd odczytu dziennika audytowego: " + e.getMessage(), e);
+            throw TechnicalException.database("odczytać dziennika audytowego", e);
         }
     }
 
@@ -117,7 +118,7 @@ public class AuditService {
         try {
             return auditLogRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd odczytu dziennika audytowego: " + e.getMessage(), e);
+            throw TechnicalException.database("odczytać dziennika audytowego", e);
         }
     }
 
@@ -126,7 +127,7 @@ public class AuditService {
         try {
             return auditLogRepository.findRecent(limit);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd odczytu dziennika audytowego: " + e.getMessage(), e);
+            throw TechnicalException.database("odczytać dziennika audytowego", e);
         }
     }
 }

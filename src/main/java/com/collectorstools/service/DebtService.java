@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.BusinessRuleException;
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.AuditEntity;
 import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Debt;
@@ -44,7 +46,7 @@ public class DebtService {
         try {
             return debtRepository.save(debt);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu sprawy: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać sprawy", e);
         }
     }
 
@@ -60,14 +62,14 @@ public class DebtService {
      */
     public void closeCase(long debtId, DebtStatus status, String reason) {
         if (status == null || !status.isClosed()) {
-            throw new IllegalArgumentException("Wskaż stan, w jakim sprawa ma zostać zamknięta.");
+            throw new BusinessRuleException("Wskaż stan, w jakim sprawa ma zostać zamknięta.");
         }
 
         Debt debt = findById(debtId).orElseThrow(
-                () -> new IllegalArgumentException("Nie znaleziono sprawy do zamknięcia."));
+                () -> new BusinessRuleException("Nie znaleziono sprawy do zamknięcia."));
 
         if (debt.isClosed()) {
-            throw new IllegalArgumentException("Sprawa jest już zamknięta ("
+            throw new BusinessRuleException("Sprawa jest już zamknięta ("
                     + debt.getStatus().getDisplayName() + ").");
         }
 
@@ -75,12 +77,12 @@ public class DebtService {
                 && debt.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0;
 
         if (status.requiresZeroBalance() && hasBalance) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     "Sprawy z niespłaconym saldem nie można zamknąć jako spłaconej. "
                             + "Wybierz inną przyczynę zamknięcia.");
         }
         if (hasBalance && (reason == null || reason.isBlank())) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     "Zamknięcie sprawy z niespłaconym saldem wymaga podania przyczyny.");
         }
 
@@ -102,10 +104,10 @@ public class DebtService {
      */
     public void reopenCase(long debtId) {
         Debt debt = findById(debtId).orElseThrow(
-                () -> new IllegalArgumentException("Nie znaleziono sprawy."));
+                () -> new BusinessRuleException("Nie znaleziono sprawy."));
 
         if (!debt.isClosed()) {
-            throw new IllegalArgumentException("Sprawa jest już aktywna.");
+            throw new BusinessRuleException("Sprawa jest już aktywna.");
         }
 
         DebtStatus previous = debt.getStatus();
@@ -124,7 +126,7 @@ public class DebtService {
         try {
             debtRepository.update(debt);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd aktualizacji sprawy: " + e.getMessage(), e);
+            throw TechnicalException.database("zaktualizować sprawy", e);
         }
     }
 
@@ -138,7 +140,7 @@ public class DebtService {
     public void delete(long id) {
         try {
             if (debtRepository.hasPayments(id)) {
-                throw new IllegalArgumentException(
+                throw new BusinessRuleException(
                         "Nie można usunąć sprawy, do której zarejestrowano wpłaty. "
                                 + "Zamknij ją zamiast usuwać — historia wpłat musi zostać zachowana.");
             }
@@ -152,7 +154,7 @@ public class DebtService {
                         removed.getCaseNumber() + " — " + removed.getCreditor(), null, null);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd usunięcia sprawy: " + e.getMessage(), e);
+            throw TechnicalException.database("usunąć sprawy", e);
         }
     }
 
@@ -160,7 +162,7 @@ public class DebtService {
         try {
             return debtRepository.findById(id);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd wyszukiwania sprawy: " + e.getMessage(), e);
+            throw TechnicalException.database("wyszukać sprawy", e);
         }
     }
 
@@ -168,7 +170,7 @@ public class DebtService {
         try {
             return debtRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania spraw dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać spraw dłużnika", e);
         }
     }
 
@@ -176,7 +178,7 @@ public class DebtService {
         try {
             return debtRepository.sumAllRemaining();
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd sumowania długów: " + e.getMessage(), e);
+            throw TechnicalException.database("zsumować długów", e);
         }
     }
 
@@ -184,7 +186,7 @@ public class DebtService {
         try {
             return debtRepository.findDebtorIdsByCreditor(phrase);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd filtrowania po wierzycielu: " + e.getMessage(), e);
+            throw TechnicalException.database("przefiltrować po wierzycielu", e);
         }
     }
 
@@ -199,13 +201,13 @@ public class DebtService {
 
     private void validate(Debt debt) {
         if (debt.getCaseNumber() == null || debt.getCaseNumber().isBlank())
-            throw new IllegalArgumentException("Numer sprawy jest wymagany.");
+            throw new BusinessRuleException("Numer sprawy jest wymagany.");
         if (debt.getCreditor() == null || debt.getCreditor().isBlank())
-            throw new IllegalArgumentException("Wierzyciel jest wymagany.");
+            throw new BusinessRuleException("Wierzyciel jest wymagany.");
         if (debt.getTotalAmount() == null || debt.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0)
-            throw new IllegalArgumentException("Kwota długu musi być większa od zera.");
+            throw new BusinessRuleException("Kwota długu musi być większa od zera.");
         if (debt.getRemainingAmount() == null || debt.getRemainingAmount().compareTo(BigDecimal.ZERO) < 0)
-            throw new IllegalArgumentException("Pozostała kwota nie może być ujemna.");
+            throw new BusinessRuleException("Pozostała kwota nie może być ujemna.");
 
         validateNotNegative(debt.getPrincipalAmount(), "Kapitał");
         validateNotNegative(debt.getInterestAmount(), "Odsetki");
@@ -215,7 +217,7 @@ public class DebtService {
 
     private void validateNotNegative(BigDecimal value, String label) {
         if (value != null && value.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException(label + " nie może być ujemny.");
+            throw new BusinessRuleException(label + " nie może być ujemny.");
         }
     }
 
@@ -242,7 +244,7 @@ public class DebtService {
 
         BigDecimal difference = debt.getComponentsSum().subtract(debt.getRemainingAmount()).abs();
         if (difference.compareTo(AMOUNT_TOLERANCE) > 0) {
-            throw new IllegalArgumentException(String.format(
+            throw new BusinessRuleException(String.format(
                     "Rozbicie salda nie zgadza się z kwotą pozostałą: %s + %s + %s = %s, oczekiwano %s.",
                     orZero(debt.getPrincipalAmount()), orZero(debt.getInterestAmount()),
                     orZero(debt.getCostAmount()), debt.getComponentsSum(), debt.getRemainingAmount()));

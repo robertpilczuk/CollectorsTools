@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.BusinessRuleException;
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.AuditEntity;
 import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Debtor;
@@ -41,7 +43,7 @@ public class DebtorService {
         try {
             return debtorRepository.save(debtor);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać dłużnika", e);
         }
     }
 
@@ -52,7 +54,7 @@ public class DebtorService {
             debtorRepository.update(debtor);
             if (previous != null) auditService.recordChanges(previous, debtor);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd aktualizacji dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("zaktualizować dłużnika", e);
         }
     }
 
@@ -75,7 +77,7 @@ public class DebtorService {
                         null, null);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd usunięcia dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("usunąć dłużnika", e);
         }
     }
 
@@ -83,7 +85,7 @@ public class DebtorService {
         try {
             return debtorRepository.findById(id);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd wyszukiwania dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("wyszukać dłużnika", e);
         }
     }
 
@@ -91,7 +93,7 @@ public class DebtorService {
         try {
             return debtorRepository.findAll();
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania listy dłużników: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać listy dłużników", e);
         }
     }
 
@@ -99,7 +101,7 @@ public class DebtorService {
         try {
             return debtorRepository.count();
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd liczenia dłużników: " + e.getMessage(), e);
+            throw TechnicalException.database("policzyć dłużników", e);
         }
     }
 
@@ -107,7 +109,7 @@ public class DebtorService {
         try {
             return debtorRepository.findDistinctCities();
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania listy miast: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać listy miast", e);
         }
     }
 
@@ -116,18 +118,18 @@ public class DebtorService {
         try {
             return debtorRepository.findByName(phrase);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd wyszukiwania: " + e.getMessage(), e);
+            throw TechnicalException.database("wyszukać", e);
         }
     }
 
     private void validate(Debtor debtor) {
         if (debtor.getFirstName() == null || debtor.getFirstName().isBlank())
-            throw new IllegalArgumentException("Imię jest wymagane.");
+            throw new BusinessRuleException("Imię jest wymagane.");
         if (debtor.getLastName() == null || debtor.getLastName().isBlank())
-            throw new IllegalArgumentException("Nazwisko jest wymagane.");
+            throw new BusinessRuleException("Nazwisko jest wymagane.");
         if (debtor.getPesel() != null && !debtor.getPesel().isBlank()) {
             if (!PeselValidator.isValid(debtor.getPesel().trim()))
-                throw new IllegalArgumentException("Nieprawidłowy PESEL (długość, cyfry lub suma kontrolna).");
+                throw new BusinessRuleException("Nieprawidłowy PESEL (długość, cyfry lub suma kontrolna).");
         }
     }
 }

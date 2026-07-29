@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Konfiguracja na czas testów. Każdy test tworzy własną bazę in-memory i stosuje
+  na niej wszystkie migracje, więc poziom INFO zalewałby wyjście setkami wpisów
+  i wypełniał plik logu bez żadnej wartości diagnostycznej.
+
+  Zapis do pliku jest tu wyłączony — logi z testów nie należą do logów aplikacji.
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%-5level %logger{25} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

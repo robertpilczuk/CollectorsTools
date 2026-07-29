@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.BusinessRuleException;
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.DebtorPhone;
 import com.collectorstools.repository.DebtorPhoneRepository;
 
@@ -24,7 +26,7 @@ public class DebtorPhoneService {
         try {
             return phoneRepository.save(phone);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu numeru telefonu: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać numeru telefonu", e);
         }
     }
 
@@ -44,7 +46,7 @@ public class DebtorPhoneService {
             phoneRepository.save(phone);
             return true;
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu numeru telefonu: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać numeru telefonu", e);
         }
     }
 
@@ -52,7 +54,7 @@ public class DebtorPhoneService {
         try {
             return phoneRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania numerów telefonu: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać numerów telefonu", e);
         }
     }
 
@@ -60,7 +62,7 @@ public class DebtorPhoneService {
         try {
             return phoneRepository.findDebtorIdsByPhone(phrase);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd wyszukiwania po telefonie: " + e.getMessage(), e);
+            throw TechnicalException.database("wyszukać po telefonie", e);
         }
     }
 
@@ -68,14 +70,14 @@ public class DebtorPhoneService {
         try {
             phoneRepository.delete(id);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd usunięcia numeru telefonu: " + e.getMessage(), e);
+            throw TechnicalException.database("usunąć numeru telefonu", e);
         }
     }
 
     private void validate(DebtorPhone phone) {
         if (phone.getDebtorId() == null)
-            throw new IllegalArgumentException("Numer telefonu musi być przypisany do dłużnika.");
+            throw new BusinessRuleException("Numer telefonu musi być przypisany do dłużnika.");
         if (phone.getPhoneNumber() == null || phone.getPhoneNumber().isBlank())
-            throw new IllegalArgumentException("Numer telefonu nie może być pusty.");
+            throw new BusinessRuleException("Numer telefonu nie może być pusty.");
     }
 }

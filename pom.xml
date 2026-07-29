@@ -73,6 +73,21 @@
             <version>3.0.3</version>
         </dependency>
 
+        <!-- Logowanie — sqlite-jdbc i pdfbox używają SLF4J, dotąd bez implementacji.
+             slf4j-api musi być zadeklarowane wprost: sqlite-jdbc ciągnie wersję 1.7.36,
+             a mediacja Mavena wybrałaby ją zamiast 2.x wymaganej przez Logback.
+             Efektem byłoby logowanie, które po cichu nic nie zapisuje. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.13</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.5.6</version>
+        </dependency>
+
     </dependencies>
 
     <build>

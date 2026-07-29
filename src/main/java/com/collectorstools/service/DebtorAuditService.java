@@ -1,5 +1,6 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.Debtor;
 import com.collectorstools.model.DebtorAudit;
 import com.collectorstools.repository.DebtorAuditRepository;
@@ -24,7 +25,7 @@ public class DebtorAuditService {
         try {
             return auditRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania historii zmian: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać historii zmian", e);
         }
     }
 
@@ -59,7 +60,7 @@ public class DebtorAuditService {
                     .newValue(n)
                     .build());
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu historii zmian: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać historii zmian", e);
         }
     }
 }

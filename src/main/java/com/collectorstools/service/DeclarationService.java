@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.BusinessRuleException;
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.AuditEntity;
 import com.collectorstools.model.AuditOperation;
 import com.collectorstools.model.Declaration;
@@ -51,7 +53,7 @@ public class DeclarationService {
         try {
             declarationRepository.refreshOverdue();
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd odświeżania statusów deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("odświeżyć statusów deklaracji", e);
         }
     }
 
@@ -68,7 +70,7 @@ public class DeclarationService {
         try {
             return declarationRepository.save(declaration);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać deklaracji", e);
         }
     }
 
@@ -77,7 +79,7 @@ public class DeclarationService {
         try {
             declarationRepository.update(declaration);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd aktualizacji deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("zaktualizować deklaracji", e);
         }
     }
 
@@ -85,7 +87,7 @@ public class DeclarationService {
         try {
             declarationRepository.delete(id);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd usunięcia deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("usunąć deklaracji", e);
         }
     }
 
@@ -93,7 +95,7 @@ public class DeclarationService {
         try {
             return declarationRepository.findById(id);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd wyszukiwania deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("wyszukać deklaracji", e);
         }
     }
 
@@ -101,17 +103,17 @@ public class DeclarationService {
         try {
             return declarationRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania deklaracji dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać deklaracji dłużnika", e);
         }
     }
 
     public List<Declaration> findByDateRange(LocalDate from, LocalDate to) {
         if (from.isAfter(to))
-            throw new IllegalArgumentException("Data 'od' nie może być późniejsza niż data 'do'.");
+            throw new BusinessRuleException("Data 'od' nie może być późniejsza niż data 'do'.");
         try {
             return declarationRepository.findByDateRange(from, to);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd filtrowania deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("przefiltrować deklaracji", e);
         }
     }
 
@@ -125,7 +127,7 @@ public class DeclarationService {
     public void markAsFulfilled(long declarationId, LocalDate paymentDate) {
         findById(declarationId).ifPresent(d -> {
             if (d.getStatus() == DeclarationStatus.CANCELLED) {
-                throw new IllegalArgumentException(
+                throw new BusinessRuleException(
                         "Deklaracja została anulowana — nie można zarejestrować do niej wpłaty.");
             }
             DeclarationStatus previous = d.getStatus();
@@ -158,12 +160,12 @@ public class DeclarationService {
      */
     public void markAsCancelled(long declarationId, String reason) {
         if (reason == null || reason.isBlank()) {
-            throw new IllegalArgumentException("Anulowanie deklaracji wymaga podania uzasadnienia.");
+            throw new BusinessRuleException("Anulowanie deklaracji wymaga podania uzasadnienia.");
         }
         findById(declarationId).ifPresent(d -> {
             if (d.getStatus() == DeclarationStatus.FULFILLED
                     || d.getStatus() == DeclarationStatus.PARTIALLY_FULFILLED) {
-                throw new IllegalArgumentException(
+                throw new BusinessRuleException(
                         "Nie można anulować deklaracji, do której zarejestrowano wpłatę.");
             }
             DeclarationStatus previous = d.getStatus();
@@ -182,7 +184,7 @@ public class DeclarationService {
         try {
             return declarationRepository.findByStatus(status);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania deklaracji wg statusu: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać deklaracji wg statusu", e);
         }
     }
 
@@ -190,7 +192,7 @@ public class DeclarationService {
         try {
             return declarationRepository.countByStatus(status);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd liczenia deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("policzyć deklaracji", e);
         }
     }
 
@@ -235,18 +237,18 @@ public class DeclarationService {
 
     private void validate(Declaration declaration) {
         if (declaration.getDebtorId() == null)
-            throw new IllegalArgumentException("Deklaracja musi być przypisana do dłużnika.");
+            throw new BusinessRuleException("Deklaracja musi być przypisana do dłużnika.");
         if (declaration.getPromisedDate() == null)
-            throw new IllegalArgumentException("Data deklaracji jest wymagana.");
+            throw new BusinessRuleException("Data deklaracji jest wymagana.");
         if (declaration.getPromisedAmount() == null || declaration.getPromisedAmount().compareTo(BigDecimal.ZERO) <= 0)
-            throw new IllegalArgumentException("Kwota deklaracji musi być większa od zera.");
+            throw new BusinessRuleException("Kwota deklaracji musi być większa od zera.");
 
         // Obietnica z terminem wcześniejszym niż moment jej złożenia jest sprzeczna
         // sama w sobie. Deklarację wpisywaną wstecz (wizyta sprzed kilku dni, import
         // danych historycznych) rejestruje się razem z faktyczną datą utworzenia.
         if (declaration.getCreatedAt() != null
                 && declaration.getPromisedDate().isBefore(declaration.getCreatedAt())) {
-            throw new IllegalArgumentException(String.format(
+            throw new BusinessRuleException(String.format(
                     "Termin deklaracji (%s) nie może być wcześniejszy niż data jej zarejestrowania (%s).",
                     declaration.getPromisedDate(), declaration.getCreatedAt()));
         }

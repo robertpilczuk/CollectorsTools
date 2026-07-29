@@ -4,6 +4,9 @@ import com.collectorstools.db.DatabaseManager;
 import com.collectorstools.model.Declaration;
 import com.collectorstools.model.DeclarationStatus;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -11,6 +14,8 @@ import java.util.List;
 import java.util.Optional;
 
 public class DeclarationRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(DeclarationRepository.class);
 
     private final Connection conn;
 
@@ -135,7 +140,7 @@ public class DeclarationRepository {
         try (Statement st = conn.createStatement()) {
             int updated = st.executeUpdate(sql);
             if (updated > 0) {
-                System.out.println("Oznaczono " + updated + " przeterminowanych deklaracji jako złamane.");
+                log.info("Oznaczono {} przeterminowanych deklaracji jako złamane.", updated);
             }
         }
     }

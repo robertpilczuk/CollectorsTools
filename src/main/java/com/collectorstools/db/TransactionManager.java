@@ -1,5 +1,9 @@
 package com.collectorstools.db;
 
+import com.collectorstools.exception.TechnicalException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 
@@ -27,6 +31,8 @@ import java.sql.SQLException;
  * temu serwis może bezpiecznie wołać inny serwis, który też używa transakcji.
  */
 public class TransactionManager {
+
+    private static final Logger log = LoggerFactory.getLogger(TransactionManager.class);
 
     private final Connection conn;
 
@@ -80,7 +86,7 @@ public class TransactionManager {
             try {
                 return operation.run();
             } catch (SQLException e) {
-                throw new RuntimeException("Błąd operacji w transakcji: " + e.getMessage(), e);
+                throw TechnicalException.database("operacji w transakcji", e);
             }
         }
 
@@ -93,7 +99,7 @@ public class TransactionManager {
             throw e;
         } catch (SQLException e) {
             rollbackQuietly();
-            throw new RuntimeException("Transakcja wycofana: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać zmian", e);
         } finally {
             restoreAutoCommit();
         }
@@ -111,7 +117,7 @@ public class TransactionManager {
             conn.setAutoCommit(false);
             return true;
         } catch (SQLException e) {
-            throw new RuntimeException("Nie udało się rozpocząć transakcji: " + e.getMessage(), e);
+            throw TechnicalException.database("rozpocząć zapisu do bazy", e);
         }
     }
 
@@ -123,7 +129,7 @@ public class TransactionManager {
         try {
             conn.rollback();
         } catch (SQLException e) {
-            System.err.println("Błąd przy wycofywaniu transakcji: " + e.getMessage());
+            log.error("Błąd przy wycofywaniu transakcji", e);
         }
     }
 
@@ -131,7 +137,7 @@ public class TransactionManager {
         try {
             conn.setAutoCommit(true);
         } catch (SQLException e) {
-            System.err.println("Błąd przy przywracaniu autocommit: " + e.getMessage());
+            log.warn("Błąd przy przywracaniu autocommit", e);
         }
     }
 }

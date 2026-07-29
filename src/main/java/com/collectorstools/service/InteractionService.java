@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.BusinessRuleException;
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.model.Interaction;
 import com.collectorstools.repository.InteractionRepository;
 
@@ -23,7 +25,7 @@ public class InteractionService {
         try {
             return interactionRepository.save(interaction);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd zapisu interakcji: " + e.getMessage(), e);
+            throw TechnicalException.database("zapisać interakcji", e);
         }
     }
 
@@ -32,7 +34,7 @@ public class InteractionService {
         try {
             interactionRepository.update(interaction);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd aktualizacji interakcji: " + e.getMessage(), e);
+            throw TechnicalException.database("zaktualizować interakcji", e);
         }
     }
 
@@ -40,7 +42,7 @@ public class InteractionService {
         try {
             interactionRepository.delete(id);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd usunięcia interakcji: " + e.getMessage(), e);
+            throw TechnicalException.database("usunąć interakcji", e);
         }
     }
 
@@ -48,7 +50,7 @@ public class InteractionService {
         try {
             return interactionRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania interakcji: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać interakcji", e);
         }
     }
 
@@ -56,16 +58,16 @@ public class InteractionService {
         try {
             return interactionRepository.countByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd liczenia interakcji: " + e.getMessage(), e);
+            throw TechnicalException.database("policzyć interakcji", e);
         }
     }
 
     private void validate(Interaction interaction) {
         if (interaction.getDebtorId() == null)
-            throw new IllegalArgumentException("Interakcja musi być przypisana do dłużnika.");
+            throw new BusinessRuleException("Interakcja musi być przypisana do dłużnika.");
         if (interaction.getInteractionDate() == null)
-            throw new IllegalArgumentException("Data interakcji jest wymagana.");
+            throw new BusinessRuleException("Data interakcji jest wymagana.");
         if (interaction.getContactType() == null)
-            throw new IllegalArgumentException("Typ kontaktu jest wymagany.");
+            throw new BusinessRuleException("Typ kontaktu jest wymagany.");
     }
 }

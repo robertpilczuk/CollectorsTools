@@ -1,5 +1,9 @@
 package com.collectorstools.db;
 
+import com.collectorstools.exception.TechnicalException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,6 +36,8 @@ import java.util.List;
  * Nigdy nie modyfikuj migracji już wydanej — dodaj kolejną.
  */
 public class SchemaManager {
+
+    private static final Logger log = LoggerFactory.getLogger(SchemaManager.class);
 
     private static final String MIGRATIONS_PATH = "/db/migrations/";
 
@@ -89,7 +95,11 @@ public class SchemaManager {
                 }
             }
         } catch (SQLException | IOException e) {
-            throw new RuntimeException("Błąd migracji schematu bazy: " + e.getMessage(), e);
+            throw new TechnicalException(
+                    "Nie udało się zaktualizować struktury bazy danych.\n\n"
+                            + "Baza pozostała w poprzedniej, spójnej wersji — żadne dane nie zostały zmienione.\n\n"
+                            + "Przywróć bazę z kopii zapasowej albo zgłoś problem z plikiem logu.",
+                    e.getMessage(), e);
         }
     }
 
@@ -150,7 +160,7 @@ public class SchemaManager {
             // user_version jest częścią nagłówka pliku bazy — zmiana jest transakcyjna
             st.execute("PRAGMA user_version = " + targetVersion);
             conn.commit();
-            System.out.println("Zastosowano migrację " + fileName + " (wersja schematu: " + targetVersion + ")");
+            log.info("Zastosowano migrację {} (wersja schematu: {})", fileName, targetVersion);
         } catch (SQLException e) {
             conn.rollback();
             throw new SQLException("Migracja " + fileName + " nie powiodła się: " + e.getMessage(), e);

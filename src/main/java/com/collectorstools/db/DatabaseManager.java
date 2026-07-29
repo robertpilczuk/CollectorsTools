@@ -1,5 +1,9 @@
 package com.collectorstools.db;
 
+import com.collectorstools.exception.TechnicalException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -7,7 +11,12 @@ import java.sql.Statement;
 
 public class DatabaseManager {
 
-    private static final String DB_FILE = "collectorstools.db";
+    private static final Logger log = LoggerFactory.getLogger(DatabaseManager.class);
+
+    /** Nazwa pliku bazy — używana też przy przywracaniu kopii przed startem aplikacji. */
+    public static final String DB_FILE_NAME = "collectorstools.db";
+
+    private static final String DB_FILE = DB_FILE_NAME;
     private static final String URL = "jdbc:sqlite:" + DB_FILE;
 
     private static DatabaseManager instance;
@@ -41,9 +50,15 @@ public class DatabaseManager {
             try (Statement st = connection.createStatement()) {
                 st.execute("PRAGMA foreign_keys = ON");
             }
-            System.out.println("Połączono z bazą danych: " + DB_FILE);
+            log.info("Połączono z bazą danych: {}", DB_FILE);
         } catch (SQLException e) {
-            throw new RuntimeException("Nie można połączyć się z bazą danych: " + e.getMessage(), e);
+            throw new TechnicalException(
+                    "Nie udało się otworzyć bazy danych \"" + DB_FILE + "\".\n\n"
+                            + "Najczęstsze przyczyny: plik jest używany przez inny program, "
+                            + "został uszkodzony albo katalog nie pozwala na zapis.\n\n"
+                            + "Zamknij pozostałe okna aplikacji i spróbuj ponownie. "
+                            + "Jeśli problem się powtarza, przywróć bazę z kopii zapasowej.",
+                    e.getMessage(), e);
         }
     }
 
@@ -63,10 +78,10 @@ public class DatabaseManager {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
-                System.out.println("Połączenie z bazą zamknięte.");
+                log.info("Połączenie z bazą zamknięte.");
             }
         } catch (SQLException e) {
-            System.err.println("Błąd przy zamykaniu połączenia: " + e.getMessage());
+            log.warn("Błąd przy zamykaniu połączenia", e);
         }
     }
 }

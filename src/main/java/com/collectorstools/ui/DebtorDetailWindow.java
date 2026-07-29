@@ -664,12 +664,10 @@ public class DebtorDetailWindow extends Stage {
                 ? paymentService.sumByDeclarationId(declaration.getId()) : BigDecimal.ZERO;
 
         new PaymentFormDialog(debts, declaration, alreadyPaid).showAndWait().ifPresent(payment -> {
-            try {
+            ErrorHandler.run("Rejestracja wpłaty", () -> {
                 paymentService.registerPayment(payment);
                 refreshAfterPayment();
-            } catch (IllegalArgumentException ex) {
-                showAlert(Alert.AlertType.WARNING, "Nie zarejestrowano wpłaty", ex.getMessage());
-            }
+            });
         });
     }
 
@@ -684,12 +682,10 @@ public class DebtorDetailWindow extends Stage {
         confirm.setHeaderText(null);
         confirm.showAndWait().ifPresent(button -> {
             if (button == ButtonType.OK) {
-                try {
+                ErrorHandler.run("Wycofanie wpłaty", () -> {
                     paymentService.reversePayment(payment.getId());
                     refreshAfterPayment();
-                } catch (IllegalArgumentException ex) {
-                    showAlert(Alert.AlertType.WARNING, "Nie wycofano wpłaty", ex.getMessage());
-                }
+                });
             }
         });
     }
@@ -730,12 +726,10 @@ public class DebtorDetailWindow extends Stage {
                         "Bez uzasadnienia nie można anulować deklaracji. Operacja przerwana.");
                 return;
             }
-            try {
+            ErrorHandler.run("Anulowanie deklaracji", () -> {
                 declarationService.markAsCancelled(d.getId(), reason);
                 loadDeclarations();
-            } catch (IllegalArgumentException ex) {
-                showAlert(Alert.AlertType.WARNING, "Anulowanie niemożliwe", ex.getMessage());
-            }
+            });
         });
     }
 
@@ -761,12 +755,10 @@ public class DebtorDetailWindow extends Stage {
 
     private void closeCase(Debt debt) {
         new CaseClosureDialog(debt).showAndWait().ifPresent(result -> {
-            try {
+            ErrorHandler.run("Zamknięcie sprawy", () -> {
                 debtService.closeCase(debt.getId(), result.status(), result.reason());
                 loadDebts();
-            } catch (IllegalArgumentException ex) {
-                showAlert(Alert.AlertType.WARNING, "Nie zamknięto sprawy", ex.getMessage());
-            }
+            });
         });
     }
 
@@ -779,12 +771,10 @@ public class DebtorDetailWindow extends Stage {
         confirm.setHeaderText(null);
         confirm.showAndWait().ifPresent(button -> {
             if (button == ButtonType.OK) {
-                try {
+                ErrorHandler.run("Ponowne otwarcie sprawy", () -> {
                     debtService.reopenCase(debt.getId());
                     loadDebts();
-                } catch (IllegalArgumentException ex) {
-                    showAlert(Alert.AlertType.WARNING, "Nie otwarto sprawy", ex.getMessage());
-                }
+                });
             }
         });
     }
@@ -795,13 +785,11 @@ public class DebtorDetailWindow extends Stage {
                 ButtonType.OK, ButtonType.CANCEL);
         alert.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.OK) {
-                try {
+                // Sprawa z wpłatami jest nieusuwalna — komunikat wskazuje alternatywę
+                ErrorHandler.run("Usunięcie sprawy", () -> {
                     debtService.delete(d.getId());
                     loadDebts();
-                } catch (IllegalArgumentException ex) {
-                    // Sprawa z wpłatami jest nieusuwalna — komunikat wskazuje alternatywę
-                    showAlert(Alert.AlertType.WARNING, "Nie usunięto sprawy", ex.getMessage());
-                }
+                });
             }
         });
     }

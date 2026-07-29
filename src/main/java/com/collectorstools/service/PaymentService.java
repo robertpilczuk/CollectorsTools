@@ -1,5 +1,7 @@
 package com.collectorstools.service;
 
+import com.collectorstools.exception.BusinessRuleException;
+import com.collectorstools.exception.TechnicalException;
 import com.collectorstools.db.TransactionManager;
 import com.collectorstools.model.AuditEntity;
 import com.collectorstools.model.AuditOperation;
@@ -75,12 +77,12 @@ public class PaymentService {
 
         return transactionManager.executeWithResult(() -> {
             Debt debt = debtRepository.findById(payment.getDebtId())
-                    .orElseThrow(() -> new IllegalArgumentException(
+                    .orElseThrow(() -> new BusinessRuleException(
                             "Nie znaleziono sprawy, do której miała trafić wpłata."));
 
             BigDecimal remaining = orZero(debt.getRemainingAmount());
             if (payment.getAmount().compareTo(remaining) > 0) {
-                throw new IllegalArgumentException(String.format(
+                throw new BusinessRuleException(String.format(
                         "Kwota wpłaty (%s zł) przekracza pozostałe saldo sprawy (%s zł). "
                                 + "Maksymalna możliwa wpłata to %s zł.",
                         money(payment.getAmount()), money(remaining), money(remaining)));
@@ -119,10 +121,10 @@ public class PaymentService {
     public void reversePayment(long paymentId) {
         transactionManager.execute(() -> {
             Payment payment = paymentRepository.findById(paymentId)
-                    .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono wpłaty do wycofania."));
+                    .orElseThrow(() -> new BusinessRuleException("Nie znaleziono wpłaty do wycofania."));
 
             Debt debt = debtRepository.findById(payment.getDebtId())
-                    .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono sprawy powiązanej z wpłatą."));
+                    .orElseThrow(() -> new BusinessRuleException("Nie znaleziono sprawy powiązanej z wpłatą."));
 
             debt.setRemainingAmount(orZero(debt.getRemainingAmount()).add(payment.getAmount()));
             debt.setCostAmount(orZero(debt.getCostAmount()).add(orZero(payment.getAllocatedCost())));
@@ -152,7 +154,7 @@ public class PaymentService {
         try {
             return paymentRepository.findByDebtId(debtId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania wpłat sprawy: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać wpłat sprawy", e);
         }
     }
 
@@ -160,7 +162,7 @@ public class PaymentService {
         try {
             return paymentRepository.findByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd pobierania wpłat dłużnika: " + e.getMessage(), e);
+            throw TechnicalException.database("pobrać wpłat dłużnika", e);
         }
     }
 
@@ -168,7 +170,7 @@ public class PaymentService {
         try {
             return paymentRepository.sumByDebtorId(debtorId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd sumowania wpłat: " + e.getMessage(), e);
+            throw TechnicalException.database("zsumować wpłat", e);
         }
     }
 
@@ -176,7 +178,7 @@ public class PaymentService {
         try {
             return paymentRepository.sumByDeclarationId(declarationId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd sumowania wpłat deklaracji: " + e.getMessage(), e);
+            throw TechnicalException.database("zsumować wpłat deklaracji", e);
         }
     }
 
@@ -184,7 +186,7 @@ public class PaymentService {
         try {
             return paymentRepository.countByDebtId(debtId);
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd liczenia wpłat: " + e.getMessage(), e);
+            throw TechnicalException.database("policzyć wpłat", e);
         }
     }
 
@@ -192,7 +194,7 @@ public class PaymentService {
         try {
             return paymentRepository.sumAll();
         } catch (SQLException e) {
-            throw new RuntimeException("Błąd sumowania wpłat: " + e.getMessage(), e);
+            throw TechnicalException.database("zsumować wpłat", e);
         }
     }
 
@@ -203,14 +205,14 @@ public class PaymentService {
             return null;
         }
         Declaration declaration = declarationRepository.findById(payment.getDeclarationId())
-                .orElseThrow(() -> new IllegalArgumentException("Nie znaleziono wskazanej deklaracji."));
+                .orElseThrow(() -> new BusinessRuleException("Nie znaleziono wskazanej deklaracji."));
 
         if (declaration.getStatus() == DeclarationStatus.CANCELLED) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     "Deklaracja została anulowana — nie można zarejestrować do niej wpłaty.");
         }
         if (!declaration.getDebtorId().equals(debt.getDebtorId())) {
-            throw new IllegalArgumentException(
+            throw new BusinessRuleException(
                     "Deklaracja należy do innego dłużnika niż wskazana sprawa.");
         }
         return declaration;
@@ -337,11 +339,11 @@ public class PaymentService {
 
     private void validate(Payment payment) {
         if (payment.getDebtId() == null)
-            throw new IllegalArgumentException("Wpłata musi być przypisana do sprawy.");
+            throw new BusinessRuleException("Wpłata musi być przypisana do sprawy.");
         if (payment.getPaymentDate() == null)
-            throw new IllegalArgumentException("Data wpłaty jest wymagana.");
+            throw new BusinessRuleException("Data wpłaty jest wymagana.");
         if (payment.getAmount() == null || payment.getAmount().compareTo(BigDecimal.ZERO) <= 0)
-            throw new IllegalArgumentException("Kwota wpłaty musi być większa od zera.");
+            throw new BusinessRuleException("Kwota wpłaty musi być większa od zera.");
     }
 
     private static BigDecimal orZero(BigDecimal value) {

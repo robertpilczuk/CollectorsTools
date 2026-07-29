@@ -374,6 +374,63 @@ Testy: 131 → 141.
 
 ---
 
+## Etap 7 — obsługa błędów i logowanie
+
+Stan wyjściowy: jedynymi „logami" były wywołania `System.out.println`, a większość wywołań
+serwisów w interfejsie nie miała żadnego przechwytywania. Wyjątek na wątku JavaFX kończył
+się tym, że aplikacja pozornie nie robiła nic — użytkownik klikał i nie działo się nic,
+bez komunikatu i bez śladu.
+
+### Logowanie, które po cichu nie działało
+
+Po dodaniu Logbacka testy przeszły, ale **plik logu nie powstał**. Przyczyna: `sqlite-jdbc`
+ciągnie `slf4j-api` w wersji **1.7.36**, a Logback 1.5.6 wymaga 2.x. Mediacja Mavena wybrała
+starszą wersję, przez co implementacja nie została odnaleziona i logi szły w pustkę —
+dokładnie ten rodzaj awarii, o który w tym etapie chodzi.
+
+Rozwiązanie: jawna deklaracja `slf4j-api` 2.0.13 jako zależności bezpośredniej. Gdyby nie
+sprawdzenie, czy plik faktycznie powstał, projekt miałby konfigurację logowania, która
+niczego nie zapisuje.
+
+Testy dostały własny `logback-test.xml` na poziomie WARN — przy 146 testach, z których każdy
+stosuje komplet migracji na własnej bazie, poziom INFO generował 100 KB logu bez żadnej
+wartości diagnostycznej.
+
+### Dwa rodzaje błędów
+
+**`BusinessRuleException`** — sytuacja przewidziana, którą użytkownik naprawi. Komunikat
+trafia na ekran bez zmian: żadnych nazw klas, kodów SQL ani stosu wywołań. Dziedziczy
+po `IllegalArgumentException`, więc wszystkie istniejące miejsca przechwytujące wyjątki
+i testy działają bez przepisywania. Zamienionych 40 wystąpień w serwisach.
+
+**`TechnicalException`** — awaria, której użytkownik nie naprawi zmianą danych w formularzu.
+Rozdziela komunikat: `getUserMessage()` mówi po ludzku co się stało i co zrobić, a szczegóły
+techniczne idą do logu. Fabryka `TechnicalException.database(…)` trzyma jeden układ:
+**co się nie udało → jaki jest skutek dla danych → co zrobić dalej**. Skutek jest istotny —
+dzięki transakcjom nieudana operacja nie zostawia połowicznego zapisu, a użytkownik powinien
+to wiedzieć, zanim zacznie sprawdzać, czy „coś się zapisało".
+
+### `ErrorHandler`
+
+Jedno miejsce, przez które błędy trafiają do użytkownika i do logu. Reguła biznesowa →
+ostrzeżenie z komunikatem, w logu wpis bez stosu. Awaria techniczna → komunikat zrozumiały
+dla użytkownika, pełny stos w pliku i do rozwinięcia w oknie „Szczegóły dla zgłoszenia".
+
+Wpina też globalny przechwytywacz wyjątków na wątku JavaFX. Wywołania serwisów w oknach
+przeszły na `ErrorHandler.run(...)`, co zastąpiło powtarzalne `try/catch` łapiące wyłącznie
+`IllegalArgumentException` — awarie techniczne wcześniej przez nie przelatywały.
+
+### Awaria bazy przy starcie
+
+Jedyny błąd, po którym aplikacja nie ma jak działać. Zamiast stosu w konsoli, której
+użytkownik nigdy nie zobaczy, pojawia się okno z przyczyną i konkretnym wyjściem:
+**wskazaniem kopii zapasowej**. Kopia zostaje skopiowana na miejsce bieżącej bazy,
+a aplikacja prosi o ponowne uruchomienie.
+
+Testy: 141 → 146.
+
+---
+
 ## Uwaga do historii commitów
 
 Etapy 4a, 4b i 4c trafiły do **jednego commita** `254a933`, którego opis odnosi się
