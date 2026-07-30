@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Kompilacja i testy (JDK 21)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Wersja Javy jest wymuszona także przez maven-enforcer-plugin ([21,22)).
+      # Lombok 1.18.32 nie kompiluje się na nowszym JDK.
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Testy formularzy uruchamiają toolkit JavaFX, który nie wstanie bez ekranu.
+      # xvfb daje wirtualny serwer X; obrazy runnerów zwykle go mają, ale instalacja
+      # jest tania i uodparnia build na zmianę obrazu.
+      - name: Wirtualny ekran dla testów JavaFX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+
+      - name: Testy
+        run: xvfb-run -a mvn -B clean verify
+
+      # Raporty przydają się dopiero, gdy coś padło — stąd if: failure()
+      - name: Raporty z nieudanych testów
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 7
+
+      # Artefakt zbudowany na Linuksie działa tylko na Linuksie: JavaFX rozwiązuje się
+      # do natywnych bibliotek systemu budującego. Paczki dla macOS i Windows powstają
+      # na tych systemach — patrz docs/dystrybucja.md.
+      - name: Fat JAR (Linux)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CollectorsTools-linux
+          path: target/CollectorsTools-*-all.jar
+          retention-days: 14
