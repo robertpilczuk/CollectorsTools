@@ -1,6 +1,7 @@
 # === Build ===
 target/
 dist/
+build/
 
 # === Baza danych (dane lokalne uzytkownika, nie naleza do repozytorium) ===
 *.db

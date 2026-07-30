@@ -130,7 +130,35 @@
                 </configuration>
             </plugin>
 
-            <!-- Fat JAR — jeden plik do uruchomienia -->
+            <!-- Wersja Javy. Lombok 1.18.32 nie kompiluje się na JDK nowszym niż 21,
+                 a Maven z Homebrew ciągnie własny, nowszy JDK i używa go domyślnie.
+                 Bez tej reguły build kończy się błędem z wnętrza Lomboka
+                 („TypeTag :: UNKNOWN"), po którym nie widać, że chodzi o wersję Javy. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>wymus-jdk-21</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,22)</version>
+                                    <message>Projekt wymaga JDK 21 — ustaw JAVA_HOME na JDK 21 (patrz docs/dystrybucja.md).</message>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Fat JAR — jeden plik do uruchomienia.
+                 Klasą startową jest Launcher, a nie Main: klasa dziedzicząca po
+                 Application nie może być punktem wejścia JAR-a uruchamianego z classpath. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -142,10 +170,17 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>all</shadedClassifierName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.collectorstools.Main</mainClass>
+                                    <mainClass>com.collectorstools.Launcher</mainClass>
                                 </transformer>
+                                <!-- Sterownik SQLite i dostawcy POI rejestrują się przez
+                                     META-INF/services. Bez scalenia tych plików wygrywa
+                                     jeden z nich, a reszta znika razem z funkcjami. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                             <filters>
                                 <filter>
