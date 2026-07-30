@@ -1,6 +1,7 @@
 package com.collectorstools.ui;
 
 import com.collectorstools.db.DatabaseManager;
+import com.collectorstools.importer.ImportSummary;
 import com.collectorstools.model.Debtor;
 import com.collectorstools.model.DeclarationStatus;
 import com.collectorstools.service.DebtService;
@@ -104,15 +105,19 @@ public class MainWindow {
         exportBtn.getStyleClass().add("btn-detail");
         exportBtn.setOnAction(e -> exportToCsv());
 
-        Button importBtn = new Button("Importuj CSV");
-        importBtn.getStyleClass().add("btn-detail");
-        importBtn.setOnAction(e -> importFromCsv());
+        MenuButton importMenu = new MenuButton("Importuj");
+        importMenu.getStyleClass().add("btn-detail");
+        MenuItem importCsvItem = new MenuItem("Z pliku CSV (sami dłużnicy)");
+        importCsvItem.setOnAction(e -> importFromCsv());
+        MenuItem importXlsxItem = new MenuItem("Z pliku XLSX (zlecenie wierzyciela)");
+        importXlsxItem.setOnAction(e -> importFromXlsx());
+        importMenu.getItems().addAll(importCsvItem, importXlsxItem);
 
         Button addBtn = new Button("+ Dodaj dłużnika");
         addBtn.getStyleClass().add("btn-primary");
         addBtn.setOnAction(e -> openDebtorForm(null));
 
-        HBox bar = new HBox(8, title, new Pane(), dbMenu, upcomingBtn, exportBtn, importBtn, addBtn);
+        HBox bar = new HBox(8, title, new Pane(), dbMenu, upcomingBtn, exportBtn, importMenu, addBtn);
         HBox.setHgrow(bar.getChildren().get(1), Priority.ALWAYS);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(12, 16, 12, 16));
@@ -445,6 +450,29 @@ public class MainWindow {
             loadDebtors();
             showAlert(Alert.AlertType.INFORMATION, "Import zakończony",
                     "Zaimportowano " + dialog.getImportedCount() + " dłużników.");
+        }
+    }
+
+    /**
+     * Import zlecenia wierzyciela z pliku XLSX — jeden wiersz to komplet: dłużnik,
+     * sprawa, telefony i to, co dało się odczytać z komentarza.
+     *
+     * <p>Podsumowanie pokazuje sam dialog, bo zna szczegóły zapisu. Tutaj zostaje
+     * tylko odświeżenie listy, jeśli cokolwiek weszło do bazy.
+     */
+    private void importFromXlsx() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Importuj zlecenie z pliku XLSX");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Pliki Excel", "*.xlsx"));
+        File file = chooser.showOpenDialog(root.getScene().getWindow());
+        if (file == null) return;
+
+        XlsxImportDialog dialog = new XlsxImportDialog(file);
+        dialog.showAndWait();
+
+        ImportSummary summary = dialog.getResult();
+        if (summary != null && summary.getRowsImported() > 0) {
+            loadDebtors();
         }
     }
 

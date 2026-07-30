@@ -297,9 +297,7 @@ public class CaseImportService {
 
     private Optional<Debtor> findDebtorByPesel(String pesel) {
         try {
-            return debtorRepository.findAll().stream()
-                    .filter(debtor -> pesel.equals(debtor.getPesel()))
-                    .findFirst();
+            return debtorRepository.findByPesel(pesel);
         } catch (SQLException e) {
             throw com.collectorstools.exception.TechnicalException.database("wyszukać dłużnika po numerze PESEL", e);
         }

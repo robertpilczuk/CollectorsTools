@@ -89,6 +89,14 @@ public class DebtorService {
         }
     }
 
+    public Optional<Debtor> findByPesel(String pesel) {
+        try {
+            return debtorRepository.findByPesel(pesel);
+        } catch (SQLException e) {
+            throw TechnicalException.database("wyszukać dłużnika po numerze PESEL", e);
+        }
+    }
+
     public List<Debtor> findAll() {
         try {
             return debtorRepository.findAll();

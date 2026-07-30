@@ -17,6 +17,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
@@ -34,27 +35,44 @@ import java.util.Set;
 /**
  * Dialog importu dłużników z pliku CSV.
  * Kolumny (pozycyjnie): Nazwisko, Imię, PESEL, Telefon, Miasto — zgodne z eksportem.
- * Podgląd z checkboxami + walidacja (puste wymagane pola, błędny/duplikowany PESEL).
+ * Podgląd z checkboxami + walidacja (puste wymagane pola, błędny PESEL).
+ *
+ * <p>Znany PESEL nie jest błędem danych — to ta sama osoba, którą już mamy. Plik CSV
+ * niesie sam kontakt, bez spraw, więc nie ma tu czego dopinać: wiersz zostaje pominięty,
+ * żeby nie powstał drugi rekord tej samej osoby, a panel pod tabelą pokazuje sprawy,
+ * które ta osoba już ma. Wcześniej taki wiersz szedł na czerwono jako „Duplikat PESEL",
+ * co sugerowało zepsute dane.
  */
 public class CsvImportDialog extends Stage {
+
+    /** Co stanie się z wierszem. Rozdzielone od błędu, bo pominięcie to nie awaria. */
+    private enum RowState {
+        /** Nowa osoba — zostanie zapisana. */
+        NEW,
+        /** Osoba już w bazie albo powtórzona w pliku — zostanie pominięta. */
+        SKIPPED,
+        /** Dane nie pozwalają na zapis. */
+        REJECTED
+    }
 
     private final DebtorService debtorService = new DebtorService();
     private final ObservableList<ImportRow> rows = FXCollections.observableArrayList();
     private final Label summary = new Label();
+    private final ExistingCasesPane existingCases = new ExistingCasesPane();
     private int importedCount = 0;
 
     public CsvImportDialog(File file) {
         initModality(Modality.APPLICATION_MODAL);
         setTitle("Import dłużników z CSV");
-        setWidth(720);
-        setHeight(520);
+        setWidth(760);
+        setHeight(620);
         setMinWidth(560);
 
         buildRows(file);
 
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(12));
-        root.setCenter(buildTable());
+        root.setCenter(buildCenter());
         root.setBottom(buildBottomBar());
 
         Scene scene = new Scene(root);
@@ -68,6 +86,28 @@ public class CsvImportDialog extends Stage {
 
     public int getImportedCount() {
         return importedCount;
+    }
+
+    private VBox buildCenter() {
+        TableView<ImportRow> table = buildTable();
+        table.getSelectionModel().selectedItemProperty().addListener(
+                (observable, previous, current) -> {
+                    if (current == null) {
+                        existingCases.clear();
+                    } else {
+                        existingCases.showFor(current.pesel,
+                                Math.max(0, countSamePeselInFile(current.pesel) - 1));
+                    }
+                });
+
+        VBox center = new VBox(table, existingCases);
+        VBox.setVgrow(table, Priority.ALWAYS);
+        return center;
+    }
+
+    private int countSamePeselInFile(String pesel) {
+        if (pesel == null || pesel.isBlank()) return 0;
+        return (int) rows.stream().filter(row -> pesel.equals(row.pesel)).count();
     }
 
     private TableView<ImportRow> buildTable() {
@@ -89,16 +129,19 @@ public class CsvImportDialog extends Stage {
         table.getColumns().add(textColumn("Telefon", r -> r.phone, 110));
         table.getColumns().add(textColumn("Miasto", r -> r.city, 110));
 
-        TableColumn<ImportRow, String> statusCol = textColumn("Status", r -> r.status, 150);
+        TableColumn<ImportRow, String> statusCol = textColumn("Status", r -> r.status, 190);
         statusCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) { setText(null); setStyle(""); return; }
+                ImportRow row = (getTableRow() == null) ? null : (ImportRow) getTableRow().getItem();
+                if (empty || item == null || row == null) { setText(null); setStyle(""); return; }
                 setText(item);
-                setStyle(item.equals("OK")
-                        ? "-fx-text-fill: #27ae60;"
-                        : "-fx-text-fill: #e74c3c; -fx-font-weight: bold;");
+                setStyle(switch (row.state) {
+                    case NEW -> "-fx-text-fill: #27ae60;";
+                    case SKIPPED -> "-fx-text-fill: #e67e22;";
+                    case REJECTED -> "-fx-text-fill: #e74c3c; -fx-font-weight: bold;";
+                });
             }
         });
         table.getColumns().add(statusCol);
@@ -132,15 +175,18 @@ public class CsvImportDialog extends Stage {
     }
 
     private void refreshSummary() {
-        long valid = rows.stream().filter(r -> r.valid).count();
-        summary.setText("Wierszy: " + rows.size() + "   Poprawnych: " + valid
-                + "   Odrzuconych: " + (rows.size() - valid));
+        long toImport = rows.stream().filter(r -> r.state == RowState.NEW).count();
+        long skipped = rows.stream().filter(r -> r.state == RowState.SKIPPED).count();
+        long rejected = rows.stream().filter(r -> r.state == RowState.REJECTED).count();
+        summary.setText("Wierszy: " + rows.size() + "   Nowych dłużników: " + toImport
+                + "   Już w bazie lub powtórzonych: " + skipped
+                + "   Odrzuconych: " + rejected);
     }
 
     private void doImport() {
         int count = 0;
         for (ImportRow r : rows) {
-            if (r.isSelected() && r.valid) {
+            if (r.isSelected() && r.state == RowState.NEW) {
                 debtorService.save(Debtor.builder()
                         .firstName(r.firstName)
                         .lastName(r.lastName)
@@ -170,6 +216,7 @@ public class CsvImportDialog extends Stage {
         for (Debtor d : debtorService.findAll()) {
             if (d.getPesel() != null && !d.getPesel().isBlank()) existingPesels.add(d.getPesel());
         }
+        // Pierwsze wystąpienie w pliku tworzy dłużnika, kolejne nie mają już czego dodać
         Set<String> seenInFile = new HashSet<>();
 
         boolean first = true;
@@ -185,24 +232,24 @@ public class CsvImportDialog extends Stage {
             String phone = at(cols, 3);
             String city = at(cols, 4);
 
-            boolean valid = true;
-            String status = "OK";
+            RowState state = RowState.NEW;
+            String status = "Nowy dłużnik";
             if (firstName.isBlank() || lastName.isBlank()) {
-                valid = false;
+                state = RowState.REJECTED;
                 status = "Brak imienia/nazwiska";
             } else if (!pesel.isBlank()) {
                 if (!PeselValidator.isValid(pesel)) {
-                    valid = false;
+                    state = RowState.REJECTED;
                     status = "Błędny PESEL";
                 } else if (existingPesels.contains(pesel)) {
-                    valid = false;
-                    status = "Duplikat PESEL (baza)";
+                    state = RowState.SKIPPED;
+                    status = "Dłużnik już w bazie — pominięty";
                 } else if (!seenInFile.add(pesel)) {
-                    valid = false;
-                    status = "Duplikat PESEL (plik)";
+                    state = RowState.SKIPPED;
+                    status = "Powtórzony w pliku — pominięty";
                 }
             }
-            rows.add(new ImportRow(lastName, firstName, pesel, phone, city, valid, status));
+            rows.add(new ImportRow(lastName, firstName, pesel, phone, city, state, status));
         }
     }
 
@@ -278,18 +325,18 @@ public class CsvImportDialog extends Stage {
     public static class ImportRow {
         private final BooleanProperty selected;
         final String lastName, firstName, pesel, phone, city, status;
-        final boolean valid;
+        final RowState state;
 
         ImportRow(String lastName, String firstName, String pesel, String phone, String city,
-                  boolean valid, String status) {
+                  RowState state, String status) {
             this.lastName = lastName;
             this.firstName = firstName;
             this.pesel = pesel;
             this.phone = phone;
             this.city = city;
-            this.valid = valid;
+            this.state = state;
             this.status = status;
-            this.selected = new SimpleBooleanProperty(valid);
+            this.selected = new SimpleBooleanProperty(state == RowState.NEW);
         }
 
         public BooleanProperty selectedProperty() { return selected; }

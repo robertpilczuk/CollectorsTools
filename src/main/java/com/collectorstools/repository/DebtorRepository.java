@@ -94,6 +94,25 @@ public class DebtorRepository {
         return Optional.empty();
     }
 
+    /**
+     * Wyszukanie po numerze PESEL — podstawa rozpoznania, że sprawa z importu
+     * należy do osoby już obecnej w bazie.
+     *
+     * <p>Kolumna dopuszcza null i nie ma ograniczenia unikalności: dane od wierzyciela
+     * bywają bez numeru, a dwie osoby w bazie mogą go nie mieć wcale. Pusty numer nigdy
+     * nie może dopasować się do kogokolwiek, dlatego wchodzi tu jako brak wyniku.
+     */
+    public Optional<Debtor> findByPesel(String pesel) throws SQLException {
+        if (pesel == null || pesel.isBlank()) return Optional.empty();
+        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM debtors WHERE pesel=?")) {
+            ps.setString(1, pesel);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(map(rs));
+            }
+        }
+        return Optional.empty();
+    }
+
     public List<Debtor> findAll() throws SQLException {
         List<Debtor> list = new ArrayList<>();
         try (Statement st = conn.createStatement();

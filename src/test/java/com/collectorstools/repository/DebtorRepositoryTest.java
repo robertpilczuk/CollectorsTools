@@ -94,6 +94,30 @@ class DebtorRepositoryTest {
     }
 
     @Test
+    void findByPeselReturnsMatchingDebtor() throws Exception {
+        Debtor jan = debtor("Jan", "Kowalski");
+        jan.setPesel("85010112345");
+        repository.save(jan);
+        repository.save(debtor("Anna", "Nowak"));
+
+        assertEquals("Kowalski", repository.findByPesel("85010112345").orElseThrow().getLastName());
+        assertTrue(repository.findByPesel("99999999999").isEmpty());
+    }
+
+    /**
+     * Kolumna dopuszcza null, a w portfelu wierzyciela 7 spraw nie miało numeru.
+     * Pusty numer nie może „dopasować się" do takiej osoby.
+     */
+    @Test
+    void findByPeselIgnoresMissingNumber() throws Exception {
+        repository.save(debtor("Jan", "Bez PESEL-u"));
+
+        assertTrue(repository.findByPesel(null).isEmpty());
+        assertTrue(repository.findByPesel("").isEmpty());
+        assertTrue(repository.findByPesel("   ").isEmpty());
+    }
+
+    @Test
     void countReturnsNumberOfDebtors() throws Exception {
         assertEquals(0, repository.count());
         repository.save(debtor("Jan", "Kowalski"));
