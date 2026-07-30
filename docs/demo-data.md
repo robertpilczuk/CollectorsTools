@@ -47,6 +47,33 @@ wymyślone wskazują nieistniejącą miejscowość „Wólka Przykładowa".
 
 ---
 
+## Jak wczytać dane w aplikacji
+
+**Importuj → Wczytaj dane demonstracyjne**. Aplikacja pyta o potwierdzenie, a przy
+niepustej bazie mówi wprost, ile dłużników już w niej stoi — dane dopisują się do
+istniejących i nie da się ich potem odróżnić od wprowadzonych ręcznie.
+
+Wczytanie przechodzi **tą samą ścieżką co plik od wierzyciela**: czytnik XLSX,
+automatyczne dopasowanie nagłówków, parser komentarza, walidacja, zapis w transakcji.
+Osobna droga zapisu wprost do bazy dawałaby stan, którego zwykły import nigdy by nie
+wyprodukował, a pierwszy problem z importem wychodziłby dopiero u użytkownika.
+
+Powstaje z tego:
+
+| | |
+|---|---|
+| dłużnicy | 155 (16 spraw dopiętych do osób już wczytanych) |
+| sprawy | 171 |
+| numery telefonu | 245 |
+| kontakty (wizyty terenowe) | 46 |
+| deklaracje | 68 |
+| wpłaty historyczne | 164 |
+
+Powtórne wczytanie dopisze sprawy, ale nie zdubluje dłużników — rozpoznaje ich PESEL.
+Wyjątkiem jest 7 spraw bez numeru: tam nie ma po czym poznać, że to ta sama osoba,
+więc powstaje ona drugi raz. Dopasowanie po nazwisku sklejałoby imienników, co jest
+gorsze niż ten duplikat.
+
 ## Jak wygenerować plik na nowo
 
 Plik źródłowy leży poza repozytorium (katalog `data/` jest w `.gitignore`).
@@ -104,3 +131,5 @@ obok „NIE DOTYCZY" w polu nazwy stał w kilku wierszach prawdziwy adres.
 - `DemoDataFileTest` — dołączony plik demo: 171 wierszy, zero odrzuceń przy imporcie,
   poprawne numery PESEL, powtórzenia osób, zgodność salda z rozbiciem oraz obecność
   danych, dla których ten plik istnieje (obietnice, wpłaty, telefony, wizyty)
+- `DemoDataLoaderTest` — wczytanie do bazy w pamięci; przy okazji najszerszy test samego
+  importu, bo przepuszcza przez niego wszystkie 171 wierszy

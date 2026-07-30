@@ -1,6 +1,7 @@
 package com.collectorstools.ui;
 
 import com.collectorstools.db.DatabaseManager;
+import com.collectorstools.demo.DemoDataLoader;
 import com.collectorstools.importer.ImportSummary;
 import com.collectorstools.model.Debtor;
 import com.collectorstools.model.DeclarationStatus;
@@ -111,7 +112,10 @@ public class MainWindow {
         importCsvItem.setOnAction(e -> importFromCsv());
         MenuItem importXlsxItem = new MenuItem("Z pliku XLSX (zlecenie wierzyciela)");
         importXlsxItem.setOnAction(e -> importFromXlsx());
-        importMenu.getItems().addAll(importCsvItem, importXlsxItem);
+        MenuItem demoItem = new MenuItem("Wczytaj dane demonstracyjne");
+        demoItem.setOnAction(e -> loadDemoData());
+        importMenu.getItems().addAll(importCsvItem, importXlsxItem,
+                new SeparatorMenuItem(), demoItem);
 
         Button addBtn = new Button("+ Dodaj dłużnika");
         addBtn.getStyleClass().add("btn-primary");
@@ -474,6 +478,45 @@ public class MainWindow {
         if (summary != null && summary.getRowsImported() > 0) {
             loadDebtors();
         }
+    }
+
+    /**
+     * Wgrywa dołączone dane demonstracyjne — 171 spraw fikcyjnych dłużników.
+     *
+     * <p>Dane dopisują się do tego, co już jest w bazie, i nie da się ich potem odróżnić
+     * od wprowadzonych ręcznie. Dlatego pytanie zadawane jest zawsze, a przy niepustej
+     * bazie mówi wprost, ile rekordów już w niej stoi.
+     */
+    private void loadDemoData() {
+        long debtors = debtorService.count();
+        String warning = debtors == 0 ? ""
+                : "\n\nUwaga: baza zawiera już " + debtors + " dłużników. Dane demonstracyjne "
+                        + "zostaną dopisane i nie będzie ich później czym odróżnić.";
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Do bazy zostanie dopisanych 171 spraw fikcyjnych dłużników — kwoty, terminy "
+                        + "i kategorie pochodzą z prawdziwego zlecenia, dane osobowe są wymyślone."
+                        + warning + "\n\nKontynuować?",
+                ButtonType.CANCEL, ButtonType.OK);
+        confirm.setTitle("Dane demonstracyjne");
+        confirm.setHeaderText(null);
+        confirm.getDialogPane().setMinWidth(520);
+
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        ImportSummary[] summary = new ImportSummary[1];
+        boolean succeeded = ErrorHandler.run("Wczytywanie danych demonstracyjnych",
+                () -> summary[0] = new DemoDataLoader().load());
+        if (!succeeded) {
+            return;
+        }
+
+        loadDebtors();
+        showAlert(summary[0].getFailures().isEmpty()
+                        ? Alert.AlertType.INFORMATION : Alert.AlertType.WARNING,
+                "Dane demonstracyjne wczytane", summary[0].describe());
     }
 
     private String csvField(String value) {
