@@ -74,8 +74,8 @@ public final class LeakCheck {
     public static List<Leak> check(File source, File demo) {
         List<Leak> leaks = new ArrayList<>();
 
-        try (Workbook sourceBook = WorkbookFactory.create(source);
-             Workbook demoBook = WorkbookFactory.create(demo)) {
+        try (Workbook sourceBook = WorkbookFactory.create(source, null, true);
+             Workbook demoBook = WorkbookFactory.create(demo, null, true)) {
 
             Sheet sourceSheet = sourceBook.getSheetAt(0);
             Sheet demoSheet = demoBook.getSheetAt(0);

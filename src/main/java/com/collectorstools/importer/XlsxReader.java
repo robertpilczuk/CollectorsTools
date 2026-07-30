@@ -32,7 +32,7 @@ public class XlsxReader {
      * Odczytuje nagłówki z pierwszego wiersza arkusza.
      */
     public List<String> readHeaders(File file) {
-        try (Workbook workbook = WorkbookFactory.create(file)) {
+        try (Workbook workbook = WorkbookFactory.create(file, null, true)) {
             Sheet sheet = workbook.getSheetAt(0);
             Row header = sheet.getRow(sheet.getFirstRowNum());
             if (header == null) {
@@ -56,7 +56,7 @@ public class XlsxReader {
      *                      dla eksportu wierzyciela jest to data jego sporządzenia
      */
     public List<ImportRow> readRows(File file, HeaderMapping mapping, LocalDate referenceDate) {
-        try (Workbook workbook = WorkbookFactory.create(file)) {
+        try (Workbook workbook = WorkbookFactory.create(file, null, true)) {
             Sheet sheet = workbook.getSheetAt(0);
             int headerRow = sheet.getFirstRowNum();
 

@@ -7,14 +7,19 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class XlsxReaderTest {
 
@@ -158,6 +163,65 @@ class XlsxReaderTest {
                 new Object[TestWorkbook.HEADERS.size()]);
 
         assertEquals(1, rows.size());
+    }
+
+    /**
+     * Kopia dołączonego pliku demonstracyjnego — pliku „z życia", a nie świeżo napisanego
+     * przez POI w tym samym procesie. Ta różnica jest istotna: plik dopiero co zapisany
+     * przez tę samą wersję biblioteki przepisuje się bajt w bajt tak samo, więc na nim
+     * naruszenie pliku źródłowego byłoby niewidoczne.
+     */
+    private File realWorldFile() throws Exception {
+        File file = directory.resolve("zlecenie.xlsx").toFile();
+        try (var in = getClass().getResourceAsStream("/demo/zlecenie-demo.xlsx")) {
+            assertNotNull(in, "Brak zasobu /demo/zlecenie-demo.xlsx");
+            Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        return file;
+    }
+
+    /**
+     * Odczyt nie może naruszyć pliku źródłowego.
+     *
+     * <p>{@code WorkbookFactory.create(File)} otwiera plik w trybie do zapisu, a POI zapisuje
+     * go z powrotem przy zamykaniu. Efekt: podgląd importu przepisywał plik zlecenia
+     * wierzyciela, zanim użytkownik cokolwiek zatwierdził — narzędzie importujące nie ma
+     * prawa dotykać cudzych danych.
+     */
+    @Test
+    @DisplayName("Odczyt nie zmienia pliku źródłowego")
+    void doesNotModifySourceFile() throws Exception {
+        File file = realWorldFile();
+        byte[] before = Files.readAllBytes(file.toPath());
+
+        HeaderMapping mapping = HeaderMapping.autoDetect(reader.readHeaders(file));
+        assertEquals(171, reader.readRows(file, mapping, EXPORT_DATE).size());
+
+        assertArrayEquals(before, Files.readAllBytes(file.toPath()),
+                "Plik źródłowy został zmieniony przez sam odczyt");
+    }
+
+    /**
+     * Plik bez prawa zapisu ma się dać zaimportować.
+     *
+     * <p>Zlecenia przychodzą na dyskach sieciowych i w katalogach współdzielonych, gdzie
+     * prawo zapisu bywa wyłączone. Otwarcie w trybie do zapisu kończyło się tam
+     * „Permission denied" — komunikatem, który sugeruje uszkodzony plik, a nie brak
+     * uprawnienia, którego odczyt i tak nie potrzebuje.
+     */
+    @Test
+    @DisplayName("Plik tylko do odczytu daje się zaimportować")
+    void importsFileWithoutWriteAccess() throws Exception {
+        File file = realWorldFile();
+        assumeTrue(file.setWritable(false) && !file.canWrite(),
+                "System nie egzekwuje prawa zapisu — test nie miałby czego sprawdzić");
+
+        try {
+            HeaderMapping mapping = HeaderMapping.autoDetect(reader.readHeaders(file));
+            assertEquals(171, reader.readRows(file, mapping, EXPORT_DATE).size());
+        } finally {
+            file.setWritable(true);
+        }
     }
 
     @Test

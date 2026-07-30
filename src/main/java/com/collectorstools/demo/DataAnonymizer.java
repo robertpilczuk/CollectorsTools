@@ -84,7 +84,7 @@ public class DataAnonymizer {
     public AnonymizationReport anonymize(File source, File target, LocalDate referenceDate) {
         AnonymizationReport report = new AnonymizationReport();
 
-        try (Workbook sourceBook = WorkbookFactory.create(source);
+        try (Workbook sourceBook = WorkbookFactory.create(source, null, true);
              XSSFWorkbook targetBook = new XSSFWorkbook()) {
 
             Sheet sourceSheet = sourceBook.getSheetAt(0);
